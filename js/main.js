@@ -67,7 +67,18 @@ class App {
     this.audio = new Drone();
     this.bindInput();
     this.bindIntro();
+    this.detectDownloads();
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  // Embedded in the Claude artifact viewer, plain downloads are blocked; the
+  // viewer's downloads capability saves files instead (with the viewer's OK).
+  detectDownloads() {
+    if (!window.claude?.use) return;
+    window.claude.use('downloads').then((d) => {
+      this.downloads = d;
+      if (d) $('btn-capture').hidden = false;
+    }).catch(() => {});
   }
 
   fail(message) {
@@ -349,10 +360,22 @@ class App {
     this.canvas.toBlob((blob) => {
       this.capturing = false;
       if (!blob) { this.ui.toast('The image could not be saved.'); return; }
+      const bh = BLACK_HOLES.find((b) => b.id === this.massId).name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+      const filename = `event-horizon-${bh}-${this.camera.r.toFixed(2)}rs.png`;
+      if (this.downloads) {
+        this.downloads.save({ filename, data: blob })
+          .then(() => this.ui.toast('Image saved'))
+          .catch((err) => {
+            if (err?.code === 'declined') return;
+            if (err?.code === 'rate_limited') { this.ui.toast('A save is already waiting for your answer.'); return; }
+            this.ui.toast('Saving images is not available here.');
+            $('btn-capture').hidden = true;
+          });
+        return;
+      }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      const bh = BLACK_HOLES.find((b) => b.id === this.massId).name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
-      a.download = `event-horizon-${bh}-${this.camera.r.toFixed(2)}rs.png`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
