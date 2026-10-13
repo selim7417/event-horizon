@@ -20,6 +20,13 @@ export class Drone {
     this.master.gain.setTargetAtTime(0.55, t, 1.2);
   }
 
+  // Silence the context while the page is hidden; pick up again when it returns.
+  async setVisible(visible) {
+    if (!this.ctx) return;
+    if (!visible) await this.ctx.suspend();
+    else if (this.enabled) await this.ctx.resume();
+  }
+
   stop() {
     if (!this.ctx) return;
     this.enabled = false;

@@ -272,6 +272,11 @@ class App {
     }, { passive: false });
 
     window.addEventListener('keydown', (e) => this.onKey(e));
+    // Rendering stops in a background tab; the sound should too.
+    document.addEventListener('visibilitychange', () => {
+      this.audio.setVisible(document.visibilityState === 'visible').catch(() => {});
+    });
+    window.addEventListener('pagehide', () => this.audio.setVisible(false).catch(() => {}));
   }
 
   userMoved() {
