@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Event Horizon</title>
+<meta name="description" content="A real-time general-relativistic black hole, ray traced in your browser. Every pixel follows a ray of light backwards through curved spacetime.">
+<meta name="theme-color" content="#050506">
+<meta property="og:title" content="Event Horizon">
+<meta property="og:description" content="A real-time general-relativistic black hole, ray traced in your browser.">
+<meta property="og:image" content="assets/og.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cellipse cx='32' cy='34' rx='30' ry='7' fill='%23ffb46a'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%23ffd9a8'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23050506'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="view" aria-label="A black hole and its accretion disk, ray traced in real time"></canvas>
+
+<div id="ui" class="ui">
+  <header class="brand">
+    <p class="wordmark">Event Horizon</p>
+    <p class="tagline"><span id="brand-bh">Sagittarius A*</span><span class="dot">·</span><span id="brand-mass">4.3 million suns</span></p>
+  </header>
+
+  <nav class="toolbar" aria-label="Main">
+    <button id="btn-tour" class="tool text" type="button" aria-pressed="false">Tour</button>
+    <button id="btn-controls" class="tool text" type="button" aria-expanded="false" aria-controls="controls">Controls</button>
+    <button id="btn-about" class="tool text" type="button"><span class="long">How it works</span><span class="short">About</span></button>
+    <span class="sep" aria-hidden="true"></span>
+    <button id="btn-sound" class="tool icon" type="button" aria-pressed="false" title="Sound (M)" aria-label="Sound">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="on" d="M4 9v6h4l5 4V5L8 9H4z M16.5 8.5a5 5 0 0 1 0 7 M19 6a8.5 8.5 0 0 1 0 12"/><path class="off" d="M4 9v6h4l5 4V5L8 9H4z M17 9.5l5 5 M22 9.5l-5 5"/></svg>
+    </button>
+    <button id="btn-capture" class="tool icon" type="button" title="Save image (P)" aria-label="Save image">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    </button>
+    <button id="btn-hide" class="tool icon" type="button" title="Hide interface (H)" aria-label="Hide interface">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+    <button id="btn-full" class="tool icon" type="button" title="Full screen (F)" aria-label="Full screen">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5"/></svg>
+    </button>
+  </nav>
+
+  <section id="instruments" class="panel instruments" aria-label="Instruments">
+    <header class="ins-head">
+      <span class="label">Observer</span>
+      <strong id="ins-observer">Hovering</strong>
+    </header>
+    <dl class="readouts">
+      <div><dt>Distance</dt><dd><span id="ins-r">26.0</span> r<sub>s</sub><small id="ins-r-phys"></small></dd></div>
+      <div><dt>Your time</dt><dd id="ins-dilation"></dd></div>
+      <div><dt>Shadow</dt><dd id="ins-shadow"></dd></div>
+      <div><dt>Your speed</dt><dd id="ins-speed"></dd></div>
+      <div id="row-thrust"><dt>Hover thrust</dt><dd id="ins-thrust"></dd></div>
+      <div><dt>Tidal stretch</dt><dd><span id="ins-tidal"></span><small>across a 2 m body</small></dd></div>
+    </dl>
+    <div class="clocks">
+      <div><span class="label">Your watch</span><output id="clock-local">00:00.00</output></div>
+      <div><span class="label">Far away</span><output id="clock-far">00:00.00</output></div>
+    </div>
+    <p class="playback" id="ins-playback"></p>
+  </section>
+
+  <figure id="diagram" class="panel diagram">
+    <canvas id="diagram-canvas" aria-label="Side-view diagram of light paths around the black hole"></canvas>
+    <figcaption>
+      <span class="label">Light paths · side view</span>
+      <ul class="legend">
+        <li class="sky">reach the stars</li>
+        <li class="disk">hit the disk</li>
+        <li class="hole">fall in</li>
+      </ul>
+    </figcaption>
+  </figure>
+
+  <section id="caption" class="caption" hidden aria-live="polite">
+    <div class="cap-head">
+      <span id="cap-count" class="count">01 / 08</span>
+      <div class="progress" aria-hidden="true"><i id="cap-progress"></i></div>
+    </div>
+    <h2 id="cap-title"></h2>
+    <p id="cap-body"></p>
+    <div id="cap-control" class="cap-control"></div>
+    <div class="cap-nav">
+      <button id="cap-prev" type="button">Back</button>
+      <button id="cap-exit" type="button">Leave tour</button>
+      <button id="cap-next" type="button" class="primary">Next</button>
+    </div>
+  </section>
+
+  <aside id="controls" class="drawer" hidden aria-label="Controls">
+    <header class="drawer-head">
+      <h2>Controls</h2>
+      <button id="controls-close" class="close" type="button" aria-label="Close controls">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="drawer-body">
+      <section class="group">
+        <h3>Black hole</h3>
+        <div class="seg" id="seg-mass" role="radiogroup" aria-label="Black hole"></div>
+        <p class="note" id="note-mass"></p>
+      </section>
+      <section class="group">
+        <h3>You are</h3>
+        <div class="seg" id="seg-observer" role="radiogroup" aria-label="Observer"></div>
+        <p class="note" id="note-observer"></p>
+      </section>
+      <section class="group" id="group-spacetime"><h3>Spacetime</h3></section>
+      <section class="group" id="group-disk"><h3>Accretion disk</h3></section>
+      <section class="group" id="group-light"><h3>Light</h3></section>
+      <section class="group" id="group-camera"><h3>Camera</h3></section>
+      <section class="group">
+        <h3>Rendering</h3>
+        <div class="seg" id="seg-quality" role="radiogroup" aria-label="Quality"></div>
+        <p class="note mono" id="perf"></p>
+      </section>
+      <button id="c-reset" class="reset" type="button">Reset everything</button>
+    </div>
+  </aside>
+
+  <p id="hint" class="hint">Drag to orbit · Scroll to move closer · Right-drag to look around</p>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+
+<section id="intro" class="intro" aria-labelledby="intro-title">
+  <div class="intro-inner">
+    <p class="eyebrow">A real-time general-relativistic ray tracer</p>
+    <h1 id="intro-title" class="intro-title">Event Horizon</h1>
+    <p class="lede">Every pixel on this screen follows a ray of light backwards through curved spacetime, around a black hole four million times the mass of the Sun.</p>
+    <div class="intro-actions">
+      <button id="intro-tour" class="primary" type="button" disabled>Take the tour <small>8 chapters, about 3 minutes</small></button>
+      <button id="intro-free" type="button" disabled>Explore freely</button>
+    </div>
+    <label class="check" for="intro-sound"><input type="checkbox" id="intro-sound" checked> Sound, best with headphones</label>
+    <p id="intro-status" class="status" role="status">Compiling spacetime…</p>
+  </div>
+  <footer class="intro-foot">
+    <span>Made by <span id="author">Selim Fata</span></span>
+    <span>WebGL2 · written from scratch · no libraries</span>
+  </footer>
+</section>
+
+<div id="ending" class="ending" hidden>
+  <p id="ending-body"></p>
+  <div class="intro-actions">
+    <button id="ending-free" class="primary" type="button">Explore freely</button>
+    <button id="ending-again" type="button">Watch the tour again</button>
+  </div>
+</div>
+
+<div id="about" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="about-title">
+  <div class="modal-card">
+    <button id="about-close" class="close" type="button" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <p class="eyebrow">How it works</p>
+    <h2 id="about-title">Following light through curved spacetime</h2>
+
+    <p>A camera normally gathers light that travels in straight lines. Near a black hole light falls, so this renderer runs the photon's journey in reverse: for each pixel it launches a ray from your eye and follows it back through the Schwarzschild geometry of a non-rotating black hole until it lands on the glowing disk, escapes to the stars, or crosses the event horizon.</p>
+
+    <h3>The orbit of a photon</h3>
+    <p>In Schwarzschild coordinates, with u = 1/r, a light ray obeys the Binet equation</p>
+    <p class="eq">d²u/dφ² + u = <sup>3</sup>⁄<sub>2</sub> r<sub>s</sub> u²</p>
+    <p>which is exactly the orbit of a particle pushed by the fictitious force <span class="mono">a = −(3/2) h² x / r⁵</span>, where h = |x × v| stays constant. The fragment shader integrates this with velocity Verlet, using steps proportional to r: up to 640 steps for every pixel, every frame. The camera's local frame is converted to coordinates exactly, so the shadow edge lands within half a percent of the analytic critical impact parameter, 3√3⁄2 r<sub>s</sub>.</p>
+
+    <h3>The colours are physics</h3>
+    <p>The disk follows the Novikov–Thorne temperature profile, T ∝ r<sup>−3/4</sup>(1 − √(r<sub>in</sub>/r))<sup>1/4</sup>, with its inner edge at the innermost stable circular orbit, 3 r<sub>s</sub>. Colours come from integrating Planck's law against the CIE 1931 colour-matching functions. Because I<sub>ν</sub>/ν³ is conserved along a ray, a blackbody at temperature T seen with frequency shift g is exactly a blackbody at g·T, so the Doppler shift, the beaming and the gravitational redshift all come from one lookup:</p>
+    <p class="eq">g = √(1 − r<sub>s</sub>/r) · √(1 − v²) ⁄ (1 − Ω b<sub>z</sub>)</p>
+    <p>Here v is the orbital speed of the gas, Ω its angular velocity and b<sub>z</sub> the photon's angular momentum about the disk axis. The same shift is applied to every star.</p>
+
+    <h3>Three ways to be near a black hole</h3>
+    <p>What you see depends on how you move. A <em>hovering</em> observer fights gravity with rockets and sees the universe shrink into a blueshifted window overhead. An <em>orbiting</em> observer sees the sky aberrated by their orbital speed. A <em>falling</em> observer moves with the light and sees a calmer sky. Each view applies relativistic aberration and Doppler shift for the observer's velocity before tracing begins.</p>
+
+    <h3>Built from scratch</h3>
+    <ul class="facts">
+      <li>WebGL2 with hand-written GLSL. No engine and no libraries.</li>
+      <li>A procedural Milky Way, nebulae and a distant galaxy baked once into an HDR cubemap; stars drawn analytically, widened and dimmed by how much lensing compresses each pixel.</li>
+      <li>HDR pipeline: physically based bloom, auto exposure, AgX tone mapping, film grain.</li>
+      <li>Temporal anti-aliasing that blends jittered frames while the view is still, and a photo mode that saves a supersampled still.</li>
+      <li>Dynamic resolution that holds the frame rate on anything from a phone to a desktop GPU.</li>
+      <li>The light-path diagram re-integrates the same equations on the CPU.</li>
+      <li>A Web Audio drone whose pitch follows the blueshift at your position.</li>
+    </ul>
+
+    <h3>What it leaves out</h3>
+    <p>The black hole does not spin, so there is no frame dragging. The disk is geometrically thin, and its turbulence is a texture rather than a fluid simulation. Light travel time across the scene is ignored.</p>
+
+    <h3>Keys</h3>
+    <dl class="keys">
+      <div><dt>Drag</dt><dd>Orbit</dd></div>
+      <div><dt>Scroll · pinch · W S</dt><dd>Move closer or further</dd></div>
+      <div><dt>Right-drag · Shift-drag</dt><dd>Look around</dd></div>
+      <div><dt>Space</dt><dd>Pause time</dd></div>
+      <div><dt>← →</dt><dd>Previous or next chapter</dd></div>
+      <div><dt>T · C · H</dt><dd>Tour · controls · hide interface</dd></div>
+      <div><dt>P · F · M</dt><dd>Save image · full screen · sound</dd></div>
+    </dl>
+  </div>
+</div>
+
+<div id="fallback" class="fallback" hidden>
+  <p class="eyebrow">Event Horizon</p>
+  <h2>This browser can't run the simulation</h2>
+  <p id="fallback-msg">It needs WebGL2. A recent version of Chrome, Edge, Firefox or Safari on a computer or phone with a GPU will work.</p>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

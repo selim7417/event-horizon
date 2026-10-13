@@ -1,0 +1,13 @@
+{
+  "name": "event-horizon",
+  "version": "1.0.0",
+  "description": "A real-time general-relativistic black hole, ray traced in the browser.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "serve": "python3 -m http.server 8000",
+    "build": "python3 tools/build.py",
+    "check": "node tools/check-geodesics.mjs"
+  }
+}
