@@ -164,7 +164,7 @@ Any static file server works, since ES modules need HTTP:
 python3 -m http.server 8000
 ```
 
-Then open http://localhost:8000.
+Then open http://localhost:8000. Add `#tour` to the address to start the tour directly, or `#explore` to skip straight to free flight.
 
 To make a single self-contained file that opens with a double-click:
 

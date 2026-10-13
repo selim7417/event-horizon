@@ -163,14 +163,14 @@ class App {
       $('intro-free').disabled = false;
     };
     ready();
-    const leave = (thenTour) => {
+    const leave = (thenTour, withGesture = true) => {
       if (!this.introOpen) return;
       this.introOpen = false;
       const intro = $('intro');
       intro.classList.add('leaving');
       document.body.classList.remove('intro-open');
       setTimeout(() => { intro.hidden = true; }, 1200);
-      if ($('intro-sound').checked) this.toggleSound(true);
+      if (withGesture && $('intro-sound').checked) this.toggleSound(true);
       this.resetClocks();
       if (thenTour) this.startTour();
       else {
@@ -183,6 +183,9 @@ class App {
     };
     $('intro-tour').addEventListener('click', () => leave(true));
     $('intro-free').addEventListener('click', () => leave(false));
+    // Deep links skip the intro: #tour starts the tour, #explore goes straight to free flight.
+    if (location.hash === '#tour') setTimeout(() => leave(true, false), 600);
+    if (location.hash === '#explore') setTimeout(() => leave(false, false), 600);
     $('ending-free').addEventListener('click', () => {
       this.ui.hideEnding();
       this.tour.stop();
