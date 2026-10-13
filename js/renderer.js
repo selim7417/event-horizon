@@ -3,17 +3,21 @@ import { TRACE_FS } from './shaders/trace.js';
 import { SKY_FS } from './shaders/sky.js';
 import { DOWNSAMPLE_FS, UPSAMPLE_FS, COMPOSITE_FS, LUMINANCE_FS, ACCUMULATE_FS } from './shaders/post.js';
 import { buildBlackbodyTable, BB_SIZE } from './blackbody.js';
+import { FramePacer } from './pacer.js';
 
 // Quality presets: integration accuracy and the largest share of device pixels
 // the tracer may render. "auto" adapts the pixel share to hold a frame rate.
 export const QUALITY = {
-  low:    { steps: 220, stepK: 0.09, maxScale: 0.45, label: 'Low' },
-  medium: { steps: 320, stepK: 0.07, maxScale: 0.65, label: 'Medium' },
-  high:   { steps: 420, stepK: 0.055, maxScale: 0.85, label: 'High' },
-  ultra:  { steps: 640, stepK: 0.04, maxScale: 1.0, label: 'Ultra' },
+  low:    { steps: 160, stepK: 0.25, stepErr: 8e-3, maxScale: 0.45, label: 'Low' },
+  medium: { steps: 220, stepK: 0.22, stepErr: 4e-3, maxScale: 0.65, label: 'Medium' },
+  high:   { steps: 300, stepK: 0.2, stepErr: 2e-3, maxScale: 0.85, label: 'High' },
+  ultra:  { steps: 480, stepK: 0.12, stepErr: 5e-4, maxScale: 1.0, label: 'Ultra' },
 };
 
 const BLOOM_LEVELS = 7;
+// The traced image is upscaled anyway, so the canvas itself need not use every
+// device pixel of a large Retina screen; this halves the fixed post-processing cost.
+const MAX_CANVAS_PX = 2.6e6;
 
 // Low-discrepancy sequence for sub-pixel jitter.
 function halton(i, base) {
@@ -55,11 +59,11 @@ export class Renderer {
     this.skyTex = null;
     this.target = null;
     this.bloom = [];
-    this.scale = 0.6;          // share of device pixels traced
+    this.scale = 0.5;          // share of canvas pixels traced
     this.quality = 'high';
     this.auto = true;
-    this.frameTimes = [];
-    this.lastScaleChange = 0;
+    this.pacer = new FramePacer(this.gl);
+    this.fullRes = false;      // photo mode: use every device pixel
     this.dpr = 1;
   }
 
@@ -110,9 +114,11 @@ export class Renderer {
     else { this.auto = false; this.quality = q; this.scale = QUALITY[q].maxScale; }
   }
 
-  // Resize the canvas backing store to the CSS size; returns tracer size.
+  // Size the canvas backing store and the traced target.
   resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cssPx = Math.max(1, this.canvas.clientWidth * this.canvas.clientHeight);
+    if (!this.fullRes && cssPx * dpr * dpr > MAX_CANVAS_PX) dpr = Math.max(1, Math.sqrt(MAX_CANVAS_PX / cssPx));
     this.dpr = dpr;
     const w = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
     const h = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
@@ -144,25 +150,13 @@ export class Renderer {
     }
   }
 
-  // Adapt the traced pixel share to the measured frame time.
+  // Adapt the traced pixel share to the GPU's measured cost.
   adapt(dtMs, now) {
-    if (!this.auto) return;
-    this.frameTimes.push(dtMs);
-    if (this.frameTimes.length > 24) this.frameTimes.shift();
-    if (now - this.lastScaleChange < 700 || this.frameTimes.length < 12) return;
-    const sorted = [...this.frameTimes].sort((a, b) => a - b);
-    const median = sorted[sorted.length >> 1];
-    let next = this.scale;
-    if (median > 26) next = this.scale * 0.86;
-    else if (median > 21) next = this.scale * 0.94;
-    else if (median < 17.6) next = this.scale * 1.06;
-    next = Math.min(0.9, Math.max(0.28, next));
-    if (Math.abs(next - this.scale) > 0.01) {
-      this.scale = next;
-      this.lastScaleChange = now;
-      this.frameTimes.length = 0;
-    }
+    const next = this.pacer.next(this.scale, dtMs, now, 0.3, 0.9);
+    if (this.auto) this.scale = next;
   }
+
+  get gpuMs() { return this.pacer.gpuMs; }
 
   // historyAlpha: weight of the new frame (1 = no history, small = long accumulation).
   render(view, post) {
@@ -173,6 +167,7 @@ export class Renderer {
     const alpha = this.historyValid ? Math.min(1, Math.max(0.02, post.historyAlpha ?? 1)) : 1;
     this.frameIndex = (this.frameIndex + 1) % 64;
     const jitter = alpha < 1 ? [halton(this.frameIndex + 1, 2) - 0.5, halton(this.frameIndex + 1, 3) - 0.5] : [0, 0];
+    this.pacer.begin();
 
     gpu.pass(this.traceProg, T, {
       uRes: [T.w, T.h],
@@ -187,6 +182,7 @@ export class Renderer {
       uTime: view.time,
       uMaxSteps: q.steps,
       uStepK: q.stepK,
+      uStepErr: q.stepErr,
       uCurvature: view.curvature,
       uDiskOn: view.diskOn,
       uDiskInner: view.diskInner,
@@ -249,5 +245,6 @@ export class Renderer {
       uFade: post.fade,
       uRes: [this.canvas.width, this.canvas.height],
     });
+    this.pacer.end();
   }
 }

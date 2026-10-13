@@ -41,7 +41,7 @@ export class Drone {
     this.master.connect(comp).connect(ctx.destination);
 
     const reverb = ctx.createConvolver();
-    reverb.buffer = this.impulse(5.5, 2.4);
+    reverb.buffer = this.impulse(3.5, 2.2);
     const wet = ctx.createGain();
     wet.gain.value = 0.75;
     reverb.connect(wet).connect(this.master);

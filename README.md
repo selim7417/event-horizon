@@ -83,7 +83,7 @@ That is exactly the orbit of a Newtonian particle under the fictitious force
 
 $$\mathbf{a} = -\frac{3}{2}\,h^2\,\frac{\mathbf{x}}{r^5}, \qquad h = |\mathbf{x}\times\mathbf{v}| = \text{const},$$
 
-so a ray can be integrated in ordinary Cartesian coordinates. The fragment shader uses velocity Verlet with a step proportional to $r$, up to 640 steps per pixel.
+so a ray can be integrated in ordinary Cartesian coordinates. The fragment shader uses velocity Verlet with an error-bounded adaptive step, up to 480 steps per pixel.
 
 The camera's directions are defined in the local frame of the observer. A static observer at radius $r$ sees a ray at angle $\alpha$ from the outward radial direction with impact parameter $b = r\sin\alpha/\sqrt{1 - r_s/r}$, which the tracer reproduces by shrinking the radial component of each camera ray by the lapse $\sqrt{1-r_s/r}$.
 
@@ -152,7 +152,8 @@ flowchart LR
 - **Temporal anti-aliasing.** Rays are jittered along a Halton sequence and blended with the previous frames. The blend weight comes from how far the view moved, measured in pixels, so a still or slowly drifting view converges to a supersampled image while fast moves stay sharp.
 - **Photo mode.** *Save image* re-traces the frozen scene at full resolution with the Ultra preset and averages 12 jittered frames, giving a 5–6 megapixel PNG in about two seconds on a laptop.
 - **HDR post-processing.** A 13-tap downsample with Karis averaging, tent-filtered upsampling, centre-weighted auto exposure that adapts over about 0.7 s, AgX tone mapping and film grain.
-- **Dynamic resolution.** The traced pixel count adapts to the measured frame time. On an M1 MacBook Air (7-core GPU), a million rays per frame take 12–19 ms at the High preset.
+- **Adaptive step size.** Each step is bounded by the integrator's local error (which grows with the rate of change of the force, $4k/r^5$) rather than by a fixed fraction of $r$. Rays grazing the photon sphere keep fine steps; the many rays passing far from it take long ones. That is about 40% fewer steps at the same accuracy.
+- **Dynamic resolution from real GPU time.** GPU timer queries measure each frame, or, where they are unavailable, fences reveal frames piling up in the GPU queue. The traced pixel count is sized to three quarters of the frame interval the browser actually grants: 60 fps normally, 30 fps when Low Power Mode caps animation. Timing in JavaScript alone is not enough, since a browser can keep firing animation frames while the GPU falls behind.
 - **Lens shift.** An off-centre projection lifts the subject above the tour captions without tilting the camera.
 - **Sound.** A Web Audio drone whose pitch follows the blueshift at the observer's position.
 

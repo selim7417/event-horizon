@@ -159,41 +159,52 @@ export function observerRayToCoordinate(sObs, camPos, obsVel, curvature) {
   return v3.norm(v3.add(s, v3.mul(rhat, sr * (l0 - 1))));
 }
 
-// Integrate one photon path (same integrator as the shader); returns the
-// polyline and its fate: 'horizon', 'disk' or 'sky'.
-export function tracePath(camPos, dir, { curvature, diskInner, diskOuter, diskOn, stepK = 0.05, maxSteps = 900 }) {
-  let pos = [...camPos];
-  let vel = [...dir];
-  const h = v3.cross(pos, vel);
-  const k = 1.5 * v3.dot(h, h) * curvature;
-  let r = v3.len(pos);
-  let acc = v3.mul(pos, -k / Math.pow(r, 5));
-  const r0 = r;
-  const escapeR = Math.max(r0 * 1.15, 40);
-  const pts = [pos];
+// Step length, as in the shader: at most a fraction of r (more far out, where
+// space is nearly flat), and short enough that Verlet's local error, which grows
+// with the rate of change of the force (4k/r⁵), stays below stepErr.
+export function stepLength(r, k, stepK, stepErr) {
+  const geometric = stepK * r * Math.min(1 + Math.max(r - 8, 0) * 0.06, 2);
+  const errorLimited = Math.cbrt((stepErr * r ** 5) / (4 * Math.max(k, 1e-9)));
+  return Math.min(Math.max(Math.min(geometric, errorLimited), 0.004), 60);
+}
+
+// Integrate one photon path with the shader's integrator. Allocation-free:
+// when `out` is given, the path is appended to it as flat x, y, z triples.
+// Returns the fate ('horizon', 'disk' or 'sky') and the number of steps.
+export function tracePath(camPos, dir, { curvature, diskInner, diskOuter, diskOn, stepK = 0.2, stepErr = 2e-3, maxSteps = 900 }, out = null) {
+  let px = camPos[0], py = camPos[1], pz = camPos[2];
+  let vx = dir[0], vy = dir[1], vz = dir[2];
+  const hx = py * vz - pz * vy, hy = pz * vx - px * vz, hz = px * vy - py * vx;
+  const k = 1.5 * (hx * hx + hy * hy + hz * hz) * curvature;
+  let r = Math.sqrt(px * px + py * py + pz * pz);
+  let f = -k / (r * r * r * r * r);
+  let ax = px * f, ay = py * f, az = pz * f;
+  const escapeR = Math.max(r * 1.15, 40);
+  if (out) out.push(px, py, pz);
   let fate = 'sky';
-  let hit = null;
-  for (let i = 0; i < maxSteps; i++) {
-    const dl = Math.min(Math.max(stepK * r, 0.004), 60);
-    const np = v3.add(v3.add(pos, v3.mul(vel, dl)), v3.mul(acc, 0.5 * dl * dl));
-    const nr = v3.len(np);
-    const na = v3.mul(np, -k / Math.pow(nr, 5));
-    const nv = v3.add(vel, v3.mul(v3.add(acc, na), 0.5 * dl));
-    if (diskOn && pos[1] * np[1] < 0) {
-      const t = pos[1] / (pos[1] - np[1]);
-      const hp = v3.add(pos, v3.mul(v3.sub(np, pos), t));
-      const hr = Math.hypot(hp[0], hp[2]);
+  let steps = 0;
+  for (; steps < maxSteps; steps++) {
+    const dl = stepLength(r, k, stepK, stepErr);
+    const h2 = 0.5 * dl * dl;
+    const nx = px + vx * dl + ax * h2, ny = py + vy * dl + ay * h2, nz = pz + vz * dl + az * h2;
+    const nr = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    const nf = -k / (nr * nr * nr * nr * nr);
+    const nax = nx * nf, nay = ny * nf, naz = nz * nf;
+    vx += 0.5 * (ax + nax) * dl; vy += 0.5 * (ay + nay) * dl; vz += 0.5 * (az + naz) * dl;
+    if (diskOn && py * ny < 0) {
+      const t = py / (py - ny);
+      const cx = px + (nx - px) * t, cz = pz + (nz - pz) * t;
+      const hr = Math.sqrt(cx * cx + cz * cz);
       if (hr > diskInner && hr < diskOuter) {
-        pts.push(hp);
+        if (out) out.push(cx, 0, cz);
         fate = 'disk';
-        hit = hp;
         break;
       }
     }
-    pos = np; vel = nv; acc = na; r = nr;
-    pts.push(pos);
+    px = nx; py = ny; pz = nz; ax = nax; ay = nay; az = naz; r = nr;
+    if (out) out.push(px, py, pz);
     if (nr < 1) { fate = 'horizon'; break; }
-    if (nr > escapeR && v3.dot(np, nv) > 0) break;
+    if (nr > escapeR && px * vx + py * vy + pz * vz > 0) break;
   }
-  return { pts, fate, hit };
+  return { fate, steps };
 }

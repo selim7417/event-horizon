@@ -30,7 +30,8 @@ uniform vec2  uJitter;        // sub-pixel offset for temporal anti-aliasing
 uniform vec3  uObsVel;        // observer velocity relative to a static observer (units of c)
 uniform float uTime;          // coordinate time, units of r_s / c
 uniform int   uMaxSteps;
-uniform float uStepK;
+uniform float uStepK;         // largest step, as a fraction of r
+uniform float uStepErr;       // local integration error allowed per step
 uniform float uCurvature;     // 0 = flat spacetime, 1 = Schwarzschild
 uniform float uDiskOn;
 uniform float uDiskInner;
@@ -262,7 +263,14 @@ void main() {
 
   for (int i = 0; i < MAX_STEPS; i++) {
     if (i >= uMaxSteps) break;
-    float dl = clamp(uStepK * rr, 0.004, 60.0);
+    // Adaptive step: at most a fraction of r (more far out, where space is nearly
+    // flat), and short enough that Verlet's local error, which grows with the rate
+    // of change of the force (4k / r⁵), stays below uStepErr. Rays grazing the
+    // photon sphere get fine steps; rays passing far from the hole take long ones.
+    float r5 = rr * rr * rr * rr * rr;
+    float geometric = uStepK * rr * min(1.0 + max(rr - 8.0, 0.0) * 0.06, 2.0);
+    float errorLimited = pow(uStepErr * r5 / (4.0 * max(k, 1e-9)), 0.3333333);
+    float dl = clamp(min(geometric, errorLimited), 0.004, 60.0);
     vec3 np = pos + vel * dl + 0.5 * acc * dl * dl;
     float nr2 = dot(np, np);
     float nr = sqrt(nr2);
@@ -272,11 +280,13 @@ void main() {
     // Corona: an optically thin Gaussian layer of height H around the disk. The
     // density is integrated exactly along each straight step (erf), so coarse
     // steps do not band.
-    if (diskActive && uCorona > 0.0) {
+    // Cheap test first (the layer is at most 2.3·H thick, H ≤ 0.042·r + 0.05).
+    float ylo = min(abs(pos.y), abs(np.y));
+    if (diskActive && uCorona > 0.0 && trans > 0.02 && ylo < 0.1 * max(rr, nr) + 0.12) {
       vec3 mid = 0.5 * (pos + np);
       float rc = length(mid.xz);
       float H = 0.042 * rc + 0.05;
-      if (min(abs(pos.y), abs(np.y)) < 3.0 * H && rc > uDiskInner * 0.9 && rc < uDiskOuter) {
+      if (ylo < 2.3 * H && rc > uDiskInner * 0.9 && rc < uDiskOuter) {
         float dy = np.y - pos.y;
         float path = abs(dy) > 1e-4 * dl
           ? dl * H * 0.886227 * abs(erfApprox(np.y / H) - erfApprox(pos.y / H)) / abs(dy)

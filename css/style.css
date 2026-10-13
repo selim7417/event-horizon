@@ -6,7 +6,7 @@
   --ink-2: rgba(236, 230, 220, 0.68);
   --ink-3: rgba(236, 230, 220, 0.42);
   --line: rgba(236, 230, 220, 0.13);
-  --glass: rgba(9, 9, 11, 0.58);
+  --glass: rgba(8, 8, 10, 0.76);      /* opaque enough to read without a blur, which is costly over a live render */
   --ember: #ffb46a;                      /* blackbody at ~2900 K */
   --ember-2: #ffd9a8;                    /* ~4000 K */
   --ice: #a9c6ff;                        /* ~20000 K, blueshift */
@@ -106,8 +106,6 @@ body.intro-open .ui > *, body.ending-open .ui > * { pointer-events: none; }
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--glass);
-  backdrop-filter: blur(14px) saturate(1.2);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
 }
 .tool {
   border: 0;
@@ -141,8 +139,6 @@ body.intro-open .ui > *, body.ending-open .ui > * { pointer-events: none; }
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--glass);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
 }
 
 /* ------------------------------------------------------------------ instruments */
@@ -248,8 +244,6 @@ body.intro-open .ui > *, body.ending-open .ui > * { pointer-events: none; }
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--glass);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   font-size: 13px;
   opacity: 0;
   pointer-events: none;
@@ -270,9 +264,7 @@ body.intro-open .ui > *, body.ending-open .ui > * { pointer-events: none; }
   padding: 18px 22px 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(9, 9, 11, 0.42), rgba(9, 9, 11, 0.72));
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  background: linear-gradient(180deg, rgba(8, 8, 10, 0.66), rgba(8, 8, 10, 0.86));
   animation: rise 0.7s cubic-bezier(.2, .7, .2, 1);
 }
 @keyframes rise { from { opacity: 0; transform: translate(-50%, 12px); } }
@@ -328,9 +320,7 @@ body.intro-open .ui > *, body.ending-open .ui > * { pointer-events: none; }
   flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: rgba(9, 9, 11, 0.74);
-  backdrop-filter: blur(20px) saturate(1.2);
-  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  background: rgba(8, 8, 10, 0.9);
   animation: slidein 0.45s cubic-bezier(.2, .7, .2, 1);
   z-index: 3;
 }
@@ -475,8 +465,6 @@ input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border-radius
   place-items: center;
   padding: calc(var(--gutter) + var(--safe-t)) var(--gutter) calc(var(--gutter) + var(--safe-b));
   background: rgba(3, 3, 4, 0.66);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   animation: fadein 0.35s ease;
 }
 .modal-card {

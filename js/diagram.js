@@ -49,15 +49,22 @@ export class Diagram {
     if (v3.len(side) < 1e-3) side = v3.sub(cam.right, v3.mul(e1, v3.dot(cam.right, e1)));
     const e2 = v3.norm(side);
     const tanV = tanHalfVertical(cam.fov, aspect);
-    const N = 29;
-    const opts = { curvature: p.curvature, diskInner: p.diskInner, diskOuter: p.diskOuter, diskOn: p.diskOn > 0.5 };
+    const N = 27;
+    const opts = { curvature: p.curvature, diskInner: p.diskInner, diskOuter: p.diskOuter, diskOn: p.diskOn > 0.5, maxSteps: 600 };
     this.paths = [];
     for (let i = 0; i < N; i++) {
       const x = -1 + (2 * i) / (N - 1);
       const sObs = v3.norm(v3.add(cam.fwd, v3.mul(cam.up, x * tanV)));
       const dir = observerRayToCoordinate(sObs, cam.pos, obsVel, p.curvature);
-      const res = tracePath(cam.pos, dir, opts);
-      this.paths.push({ fate: res.fate, pts: res.pts.map((q) => [v3.dot(q, e1), v3.dot(q, e2)]) });
+      const flat = [];
+      const { fate } = tracePath(cam.pos, dir, opts, flat);
+      // Project onto the diagram plane: (toward camera, screen-up).
+      const pts = new Float32Array((flat.length / 3) * 2);
+      for (let j = 0, o = 0; j < flat.length; j += 3, o += 2) {
+        pts[o] = flat[j] * e1[0] + flat[j + 1] * e1[1] + flat[j + 2] * e1[2];
+        pts[o + 1] = flat[j] * e2[0] + flat[j + 1] * e2[1] + flat[j + 2] * e2[2];
+      }
+      this.paths.push({ fate, pts });
     }
 
     // Where the disk plane cuts the diagram plane.
@@ -127,16 +134,16 @@ export class Diagram {
     ctx.lineWidth = 1.1 * dpr;
     ctx.lineJoin = 'round';
     for (const path of this.paths) {
+      const pts = path.pts;
       ctx.strokeStyle = COLORS[path.fate];
       ctx.beginPath();
-      path.pts.forEach(([x, y], i) => {
-        const [px, py] = map(x, y);
+      for (let i = 0; i < pts.length; i += 2) {
+        const [px, py] = map(pts[i], pts[i + 1]);
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      });
+      }
       ctx.stroke();
       if (path.fate === 'disk') {
-        const [x, y] = path.pts[path.pts.length - 1];
-        const [px, py] = map(x, y);
+        const [px, py] = map(pts[pts.length - 2], pts[pts.length - 1]);
         ctx.fillStyle = COLORS.disk;
         ctx.beginPath(); ctx.arc(px, py, 1.8 * dpr, 0, Math.PI * 2); ctx.fill();
       }

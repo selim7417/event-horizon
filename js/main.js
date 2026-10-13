@@ -50,7 +50,7 @@ class App {
       this.renderer = new Renderer(this.canvas);
       const small = Math.min(screen.width, screen.height) < 700;
       this.renderer.bakeSky(small ? 512 : 1024);
-      this.renderer.scale = small ? 0.4 : 0.6;
+      this.renderer.scale = small ? 0.4 : 0.5;
     } catch (err) {
       console.error(err);
       this.fail(err.message === 'WEBGL2_UNAVAILABLE' ? null : 'The GPU could not compile the ray tracer on this device. Try another browser or computer.');
@@ -347,7 +347,9 @@ class App {
   renderStill() {
     const R = this.renderer;
     const prev = { quality: R.quality, auto: R.auto, scale: R.scale };
-    const px = this.canvas.width * this.canvas.height;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const px = this.canvas.clientWidth * this.canvas.clientHeight * dpr * dpr;
+    R.fullRes = true;
     R.quality = 'ultra';
     R.auto = false;
     R.scale = Math.min(1, Math.sqrt(6e6 / px));
@@ -385,7 +387,7 @@ class App {
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       this.ui.toast('Image saved');
     }, 'image/png');
-    Object.assign(R, prev);
+    Object.assign(R, prev, { fullRes: false });
   }
 
   // ---------------------------------------------------------------- simulation
@@ -570,7 +572,8 @@ class App {
     ui.setText('ins-playback', rate === 0 ? 'Time paused' : `1 s on screen = ${formatDuration(rate)} on your watch`);
     ui.sync('fov', this.camera.fov);
     const T = this.renderer.target;
-    ui.setText('perf', `${Math.round(this.fps)} fps · ${(T.w * T.h / 1e6).toFixed(2)} million rays per frame`);
+    const gpu = this.renderer.gpuMs ? ` · GPU ${this.renderer.gpuMs.toFixed(1)} ms` : '';
+    ui.setText('perf', `${Math.round(this.fps)} fps${gpu} · ${(T.w * T.h / 1e6).toFixed(2)} million rays per frame`);
   }
 }
 

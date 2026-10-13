@@ -164,7 +164,7 @@
     <h3>The orbit of a photon</h3>
     <p>In Schwarzschild coordinates, with u = 1/r, a light ray obeys the Binet equation</p>
     <p class="eq">d²u/dφ² + u = <sup>3</sup>⁄<sub>2</sub> r<sub>s</sub> u²</p>
-    <p>which is exactly the orbit of a particle pushed by the fictitious force <span class="mono">a = −(3/2) h² x / r⁵</span>, where h = |x × v| stays constant. The fragment shader integrates this with velocity Verlet, using steps proportional to r: up to 640 steps for every pixel, every frame. The camera's local frame is converted to coordinates exactly, so the shadow edge lands within half a percent of the analytic critical impact parameter, 3√3⁄2 r<sub>s</sub>.</p>
+    <p>which is exactly the orbit of a particle pushed by the fictitious force <span class="mono">a = −(3/2) h² x / r⁵</span>, where h = |x × v| stays constant. The fragment shader integrates this with velocity Verlet, with each step bounded by the integrator's local error: up to 480 steps for every pixel, every frame. The camera's local frame is converted to coordinates exactly, so the shadow edge lands within half a percent of the analytic critical impact parameter, 3√3⁄2 r<sub>s</sub>.</p>
 
     <h3>The colours are physics</h3>
     <p>The disk follows the Novikov–Thorne temperature profile, T ∝ r<sup>−3/4</sup>(1 − √(r<sub>in</sub>/r))<sup>1/4</sup>, with its inner edge at the innermost stable circular orbit, 3 r<sub>s</sub>. Colours come from integrating Planck's law against the CIE 1931 colour-matching functions. Because I<sub>ν</sub>/ν³ is conserved along a ray, a blackbody at temperature T seen with frequency shift g is exactly a blackbody at g·T, so the Doppler shift, the beaming and the gravitational redshift all come from one lookup:</p>
@@ -180,7 +180,7 @@
       <li>A procedural Milky Way, nebulae and a distant galaxy baked once into an HDR cubemap; stars drawn analytically, widened and dimmed by how much lensing compresses each pixel.</li>
       <li>HDR pipeline: physically based bloom, auto exposure, AgX tone mapping, film grain.</li>
       <li>Temporal anti-aliasing that blends jittered frames while the view is still, and a photo mode that saves a supersampled still.</li>
-      <li>Dynamic resolution that holds the frame rate on anything from a phone to a desktop GPU.</li>
+      <li>Step sizes bounded by the integrator's own error, and dynamic resolution driven by GPU timer queries, so the frame rate holds on anything from a phone to a desktop GPU.</li>
       <li>The light-path diagram re-integrates the same equations on the CPU.</li>
       <li>A Web Audio drone whose pitch follows the blueshift at your position.</li>
     </ul>
