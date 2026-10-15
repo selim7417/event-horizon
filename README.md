@@ -2,6 +2,8 @@
 
 **A real-time general-relativistic black hole, ray traced in the browser.**
 
+### ▶ [Launch the simulation](https://selim7417.github.io/event-horizon/) · [Start the guided tour](https://selim7417.github.io/event-horizon/#tour)
+
 Every pixel follows a ray of light backwards through the curved spacetime of a Schwarzschild black hole, until it lands on the glowing accretion disk, escapes to the stars, or crosses the event horizon. The colours come from physics: blackbody radiation, Doppler beaming and gravitational redshift, all computed per pixel, every frame.
 
 ![Event Horizon: an edge-on accretion disk lensed over and under the black hole's shadow](assets/hero.jpg)
@@ -179,7 +181,7 @@ This writes `dist/event-horizon.html`, about 140 KB with everything inlined. The
 
 1. Push this folder to a new GitHub repository.
 2. In **Settings → Pages**, choose **Deploy from a branch**, then select `main` and `/ (root)`.
-3. The site appears at `https://<your-user>.github.io/<repo>/`. For link previews, change the `og:image` URL in `index.html` to an absolute address.
+3. The site appears at `https://<your-user>.github.io/<repo>/`. If you fork it, point the `og:image` and `og:url` addresses in `index.html` at your own copy so link previews work.
 
 ## Controls
 
