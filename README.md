@@ -2,7 +2,9 @@
 
 **A real-time general-relativistic black hole, ray traced in the browser.**
 
-### ▶ [Launch the simulation](https://selim7417.github.io/event-horizon/) · [Start the guided tour](https://selim7417.github.io/event-horizon/#tour)
+### ▶ [Launch the simulation](https://photon-ring.vercel.app/) · [Start the guided tour](https://photon-ring.vercel.app/#tour)
+
+<sub>Named after the photon ring: the thin circle of light that hugs the black hole's shadow, made of light that has orbited the hole before escaping.</sub>
 
 Every pixel follows a ray of light backwards through the curved spacetime of a Schwarzschild black hole, until it lands on the glowing accretion disk, escapes to the stars, or crosses the event horizon. The colours come from physics: blackbody radiation, Doppler beaming and gravitational redshift, all computed per pixel, every frame.
 
@@ -179,11 +181,11 @@ python3 tools/build.py
 
 The bundler is a short Python script that wraps each ES module in a function scope, so there is nothing to install.
 
-### Deploying to GitHub Pages
+### Deploying
 
-1. Push this folder to a new GitHub repository.
-2. In **Settings → Pages**, choose **Deploy from a branch**, then select `main` and `/ (root)`.
-3. The site appears at `https://<your-user>.github.io/<repo>/`. If you fork it, point the `og:image` and `og:url` addresses in `index.html` at your own copy so link previews work.
+It is a static site with no build step, so any static host works. The live copy is on [Vercel](https://vercel.com), which redeploys on every push to `main`: import the repository, keep the framework preset at *Other* and leave the build command empty. GitHub Pages works too (**Settings → Pages → Deploy from a branch → `main` / root**).
+
+If you host your own copy, point the `canonical`, `og:url` and `og:image` addresses in `index.html` at it so link previews show the right page.
 
 ## Controls
 

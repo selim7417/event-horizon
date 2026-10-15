@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "serve": "python3 -m http.server 8000",
-    "build": "python3 tools/build.py",
+    "bundle": "python3 tools/build.py",
     "check": "node tools/check-geodesics.mjs"
   }
 }
