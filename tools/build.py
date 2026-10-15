@@ -71,13 +71,15 @@ def main():
         sys.exit('index.html no longer contains the expected stylesheet/script tags')
     single = html.replace(link, f'<style>\n{css}</style>').replace(script, f'<script type="module">\n{js}</script>')
     single = re.sub(r'\s*<meta property="og:image"[^>]*>', '', single)
+    # The bundle is itself the file:// fallback, so it must not redirect.
+    single = re.sub(r'\s*<!-- file-redirect -->.*?<!-- /file-redirect -->', '', single, flags=re.S)
 
     DIST.mkdir(exist_ok=True)
     (DIST / 'event-horizon.html').write_text(single, encoding='utf-8')
 
     # Fragment for hosts that supply their own <html>/<head>/<body> skeleton.
     head = re.search(r'<head>(.*?)</head>', single, re.S).group(1)
-    body = re.search(r'<body>(.*?)</body>', single, re.S).group(1)
+    body = re.search(r'<body[^>]*>(.*?)</body>', single, re.S).group(1)
     keep = [t for t in re.findall(r'<title>.*?</title>|<link[^>]*>|<style>.*?</style>', head, re.S)]
     (DIST / 'embed.html').write_text('\n'.join(keep) + '\n' + body.strip() + '\n', encoding='utf-8')
 

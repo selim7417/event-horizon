@@ -1,5 +1,5 @@
 .DS_Store
-dist/
+dist/embed.html
 .dev/
 .claude/
 node_modules/

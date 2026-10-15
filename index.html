@@ -17,8 +17,15 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap">
 <link rel="stylesheet" href="css/style.css">
+<!-- file-redirect -->
+<script>
+  // Browsers refuse to load ES modules from a page opened straight from disk.
+  // Opened that way, switch to the bundled single-file build, which runs offline.
+  if (location.protocol === 'file:') location.replace('dist/event-horizon.html' + location.hash);
+</script>
+<!-- /file-redirect -->
 </head>
-<body>
+<body class="intro-open">
 <canvas id="view" aria-label="A black hole and its accretion disk, ray traced in real time"></canvas>
 
 <div id="ui" class="ui">

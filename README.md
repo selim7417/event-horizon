@@ -161,7 +161,9 @@ flowchart LR
 
 ## Running it
 
-Any static file server works, since ES modules need HTTP:
+**Double-click `index.html`.** Browsers refuse to load ES modules from a page opened straight from disk, so when it's opened that way it switches to `dist/event-horizon.html`, a self-contained single-file build (about 155 KB, everything inlined) that runs offline.
+
+To work on the source, serve the folder over HTTP:
 
 ```bash
 python3 -m http.server 8000
@@ -169,13 +171,13 @@ python3 -m http.server 8000
 
 Then open http://localhost:8000. Add `#tour` to the address to start the tour directly, or `#explore` to skip straight to free flight.
 
-To make a single self-contained file that opens with a double-click:
+After changing the source, rebuild the single-file version:
 
 ```bash
 python3 tools/build.py
 ```
 
-This writes `dist/event-horizon.html`, about 140 KB with everything inlined. The bundler is a short Python script that wraps each ES module in a function scope, so there is nothing to install.
+The bundler is a short Python script that wraps each ES module in a function scope, so there is nothing to install.
 
 ### Deploying to GitHub Pages
 
@@ -212,7 +214,8 @@ js/tour.js            the eight chapters
 js/camera.js          orbit camera with free look, roll and inertia
 js/audio.js           generative drone
 js/gl.js              small WebGL2 helper
-tools/build.py        single-file bundler
+tools/build.py        single-file bundler (writes dist/event-horizon.html)
+dist/event-horizon.html   the bundled build, used when index.html is opened from disk
 tools/check-geodesics.mjs   accuracy check against the analytic shadow
 ```
 

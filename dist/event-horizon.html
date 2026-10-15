@@ -1,0 +1,3980 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Event Horizon</title>
+<meta name="description" content="A real-time general-relativistic black hole, ray traced in your browser. Every pixel follows a ray of light backwards through curved spacetime.">
+<meta name="theme-color" content="#050506">
+<meta property="og:title" content="Event Horizon">
+<meta property="og:description" content="A real-time general-relativistic black hole, ray traced in your browser.">
+<meta property="og:url" content="https://selim7417.github.io/event-horizon/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cellipse cx='32' cy='34' rx='30' ry='7' fill='%23ffb46a'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%23ffd9a8'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23050506'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap">
+<style>
+/* Layout: a full-bleed render with instruments docked to the corners, like an
+   observatory console laid over a film frame. Single deliberate dark look. */
+:root {
+  --void: #050506;                       /* page ground */
+  --ink: #ece6dc;                        /* warm paper white, ~5800 K */
+  --ink-2: rgba(236, 230, 220, 0.68);
+  --ink-3: rgba(236, 230, 220, 0.42);
+  --line: rgba(236, 230, 220, 0.13);
+  --glass: rgba(8, 8, 10, 0.76);      /* opaque enough to read without a blur, which is costly over a live render */
+  --ember: #ffb46a;                      /* blackbody at ~2900 K */
+  --ember-2: #ffd9a8;                    /* ~4000 K */
+  --ice: #a9c6ff;                        /* ~20000 K, blueshift */
+  --hot: #ff6a45;                        /* captured light */
+  --font-display: 'Cormorant Garamond', 'Cormorant', 'Iowan Old Style', Georgia, serif;
+  --font-body: 'IBM Plex Sans', 'Helvetica Neue', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --gutter: clamp(16px, 2.2vw, 28px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  touch-action: none;
+}
+button { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+
+#view {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  outline: none;
+}
+#view.dragging { cursor: grabbing; }
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mono { font-family: var(--font-mono); }
+
+/* ------------------------------------------------------------------ chrome */
+.ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+.ui > * { pointer-events: auto; }
+.ui.hidden-ui { opacity: 0; }
+.ui.hidden-ui > * { pointer-events: none; }
+body.intro-open .ui, body.ending-open .ui { opacity: 0; pointer-events: none; }
+body.intro-open .ui > *, body.ending-open .ui > * { pointer-events: none; }
+
+.brand {
+  position: absolute;
+  top: calc(var(--gutter) + var(--safe-t));
+  left: var(--gutter);
+  pointer-events: none;
+}
+.wordmark {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+.tagline {
+  margin: 8px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.tagline .dot { color: var(--ember); }
+
+.toolbar {
+  position: absolute;
+  top: calc(var(--gutter) + var(--safe-t));
+  right: var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--glass);
+}
+.tool {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 999px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-2);
+  transition: background 0.2s, color 0.2s;
+}
+.tool.text { padding: 0 14px; font-size: 13px; letter-spacing: 0.02em; }
+.tool.icon { width: 34px; }
+.tool:hover { background: rgba(236, 230, 220, 0.08); color: var(--ink); }
+.tool[aria-pressed="true"], .tool[aria-expanded="true"], .tool.active { color: var(--ember-2); background: rgba(255, 180, 106, 0.1); }
+.tool svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.tool .off { display: inline; }
+.tool .on { display: none; }
+.tool[aria-pressed="true"] .on { display: inline; }
+.tool[aria-pressed="true"] .off { display: none; }
+.tool .short { display: none; }
+.tool.text { white-space: nowrap; }
+.sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+
+:focus-visible { outline: 1.5px solid var(--ember); outline-offset: 2px; }
+
+.panel {
+  position: absolute;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--glass);
+}
+
+/* ------------------------------------------------------------------ instruments */
+.instruments {
+  left: var(--gutter);
+  bottom: calc(var(--gutter) + var(--safe-b));
+  width: 316px;
+  padding: 14px 16px 12px;
+  transition: opacity 0.4s;
+}
+.ins-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.ins-head strong {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 21px;
+  line-height: 1;
+  color: var(--ember-2);
+}
+.readouts { margin: 8px 0 0; display: grid; gap: 5px; }
+.readouts > div { display: grid; grid-template-columns: 112px 1fr; align-items: baseline; gap: 8px; }
+.readouts dt { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+.readouts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  min-width: 0;
+}
+.readouts dd small { display: block; font-size: 11px; color: var(--ink-3); }
+.readouts sub { font-size: 0.75em; }
+.clocks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.clocks > div { display: grid; gap: 2px; }
+.clocks output {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+#clock-local { color: var(--ember-2); }
+#clock-far { color: var(--ice); }
+.playback {
+  margin: 8px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+
+/* ------------------------------------------------------------------ diagram */
+.diagram {
+  right: var(--gutter);
+  bottom: calc(var(--gutter) + var(--safe-b));
+  width: 236px;
+  margin: 0;
+  padding: 10px 10px 12px;
+}
+.diagram canvas { display: block; width: 214px; height: 214px; margin: 0 auto; }
+.diagram figcaption { display: grid; gap: 6px; padding: 4px 4px 0; }
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--ink-2); }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.legend li::before { content: ''; width: 12px; height: 2px; border-radius: 2px; background: currentColor; }
+.legend .sky::before { background: var(--ice); }
+.legend .disk::before { background: var(--ember); }
+.legend .hole::before { background: var(--hot); }
+
+/* ------------------------------------------------------------------ hint, toast */
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--gutter) + var(--safe-b) + 6px);
+  transform: translateX(-50%);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 1.2s;
+}
+.hint.gone { opacity: 0; }
+.toast {
+  position: absolute;
+  top: calc(var(--gutter) + var(--safe-t) + 64px);
+  left: 50%;
+  transform: translate(-50%, -8px);
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s, transform 0.35s;
+  max-width: calc(100vw - 2 * var(--gutter));
+  text-align: center;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ------------------------------------------------------------------ tour caption */
+.caption {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--gutter) + var(--safe-b));
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 2 * var(--gutter) - 2 * 300px - 40px));
+  min-width: 380px;
+  padding: 18px 22px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(8, 8, 10, 0.66), rgba(8, 8, 10, 0.86));
+  animation: rise 0.7s cubic-bezier(.2, .7, .2, 1);
+}
+@keyframes rise { from { opacity: 0; transform: translate(-50%, 12px); } }
+.cap-head { display: flex; align-items: center; gap: 12px; }
+.count { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--ember); }
+.progress { flex: 1; height: 1px; background: var(--line); overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--ember); }
+.caption h2 {
+  margin: 10px 0 6px;
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-style: italic;
+  font-size: 38px;
+  line-height: 1.05;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+.caption p { margin: 0; font-size: 14.5px; line-height: 1.6; color: var(--ink-2); font-weight: 300; text-wrap: pretty; }
+.caption p.swap { animation: fadein 0.6s ease; }
+@keyframes fadein { from { opacity: 0; } }
+.cap-control { margin-top: 12px; }
+.cap-control:empty { display: none; }
+.cap-nav { display: flex; gap: 8px; margin-top: 14px; }
+.cap-nav button, .intro-actions button, .reset {
+  border: 1px solid var(--line);
+  background: rgba(236, 230, 220, 0.04);
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-2);
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.cap-nav button:hover, .intro-actions button:hover, .reset:hover { color: var(--ink); background: rgba(236, 230, 220, 0.09); }
+.cap-nav button:disabled { opacity: 0.35; cursor: default; }
+#cap-exit { margin-right: auto; }
+.cap-nav .primary, .intro-actions .primary {
+  color: #1a1206;
+  background: var(--ember-2);
+  border-color: var(--ember-2);
+  font-weight: 500;
+}
+.cap-nav .primary:hover, .intro-actions .primary:hover { background: #ffe6c4; color: #1a1206; }
+
+/* ------------------------------------------------------------------ controls */
+.drawer {
+  position: absolute;
+  top: calc(var(--gutter) + var(--safe-t) + 54px);
+  right: var(--gutter);
+  bottom: calc(var(--gutter) + var(--safe-b));
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(8, 8, 10, 0.9);
+  animation: slidein 0.45s cubic-bezier(.2, .7, .2, 1);
+  z-index: 3;
+}
+@keyframes slidein { from { opacity: 0; transform: translateX(16px); } }
+.drawer-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.drawer-head h2 { margin: 0; font-family: var(--font-display); font-style: italic; font-weight: 400; font-size: 24px; }
+.drawer-body { overflow-y: auto; padding: 4px 16px 16px; overscroll-behavior: contain; }
+.close {
+  border: 0;
+  background: transparent;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--ink-2);
+  display: grid;
+  place-items: center;
+}
+.close:hover { background: rgba(236, 230, 220, 0.08); color: var(--ink); }
+.close svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.5; fill: none; stroke-linecap: round; }
+.group { padding: 14px 0 12px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.group h3 { margin: 0; font-family: var(--font-mono); font-weight: 400; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+.note { margin: 0; font-size: 12px; color: var(--ink-3); line-height: 1.45; }
+
+.seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; }
+.seg button {
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+#seg-mass { display: grid; grid-template-columns: 1fr 1fr; }
+.seg button:hover { color: var(--ink); background: rgba(236, 230, 220, 0.06); }
+.seg button[aria-checked="true"] { background: rgba(255, 180, 106, 0.14); color: var(--ember-2); }
+
+.slider { display: grid; gap: 6px; }
+.slider .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--ink-2); }
+.slider output { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+input[type="range"]::-webkit-slider-runnable-track { height: 2px; border-radius: 2px; background: var(--track, var(--line)); }
+input[type="range"]::-moz-range-track { height: 2px; border-radius: 2px; background: var(--track, var(--line)); }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 3px solid var(--void);
+  box-shadow: 0 0 0 1px var(--ink-3);
+}
+input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: var(--ink); border: 3px solid var(--void); box-shadow: 0 0 0 1px var(--ink-3); }
+.slider.temp input { --track: linear-gradient(90deg, var(--bb-stops)); }
+
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+.switch input { appearance: none; -webkit-appearance: none; width: 30px; height: 17px; border-radius: 999px; background: rgba(236, 230, 220, 0.14); position: relative; cursor: pointer; flex: none; margin: 0; transition: background 0.2s; }
+.switch input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--ink-2); transition: transform 0.2s, background 0.2s; }
+.switch input:checked { background: rgba(255, 180, 106, 0.45); }
+.switch input:checked::after { transform: translateX(13px); background: var(--ember-2); }
+.reset { margin-top: 16px; width: 100%; }
+
+/* ------------------------------------------------------------------ intro & ending */
+.intro, .ending {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--gutter) + var(--safe-t)) var(--gutter) calc(var(--gutter) + var(--safe-b));
+  background: radial-gradient(ellipse at 50% 55%, rgba(5, 5, 6, 0.15), rgba(5, 5, 6, 0.75) 70%);
+  z-index: 10;
+  transition: opacity 1.1s ease;
+}
+.intro.leaving, .ending.leaving { opacity: 0; pointer-events: none; }
+.intro { place-items: end center; background: linear-gradient(180deg, rgba(5, 5, 6, 0) 30%, rgba(5, 5, 6, 0.7) 78%); }
+.intro-inner { max-width: 900px; text-align: center; display: grid; justify-items: center; gap: 18px; margin-bottom: clamp(48px, 9vh, 110px); }
+.eyebrow { margin: 0; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ember); }
+.intro-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: clamp(54px, 10.5vw, 128px);
+  line-height: 0.9;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+}
+.lede { margin: 0; max-width: 34em; font-size: 16px; line-height: 1.65; font-weight: 300; color: var(--ink-2); text-wrap: balance; }
+.intro-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 6px; }
+.intro-actions button { padding: 12px 22px; font-size: 14px; display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.intro-actions button small { font-size: 11px; font-weight: 400; opacity: 0.7; }
+.intro-actions button:disabled { opacity: 0.4; cursor: progress; }
+.check { display: inline-flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-3); cursor: pointer; }
+.check input { accent-color: var(--ember); }
+.status { margin: 0; min-height: 1.5em; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; color: var(--ink-3); }
+.intro-foot {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: calc(var(--gutter) + var(--safe-b));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.ending { background: rgba(5, 5, 6, 0.4); align-content: center; gap: 22px; }
+.ending p {
+  max-width: 30em;
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-style: italic;
+  font-size: clamp(22px, 3vw, 32px);
+  line-height: 1.35;
+  text-wrap: balance;
+  animation: fadein 2s ease;
+}
+
+/* ------------------------------------------------------------------ modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--gutter) + var(--safe-t)) var(--gutter) calc(var(--gutter) + var(--safe-b));
+  background: rgba(3, 3, 4, 0.66);
+  animation: fadein 0.35s ease;
+}
+.modal-card {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 34px 40px 30px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 10, 12, 0.92);
+  overscroll-behavior: contain;
+}
+.modal-card .close { position: absolute; top: 14px; right: 14px; }
+.modal-card h2 { margin: 8px 0 18px; font-family: var(--font-display); font-weight: 300; font-size: 40px; line-height: 1.05; text-wrap: balance; }
+.modal-card h3 { margin: 28px 0 8px; font-family: var(--font-display); font-style: italic; font-weight: 400; font-size: 24px; color: var(--ember-2); }
+.modal-card p, .modal-card li { font-size: 14.5px; line-height: 1.7; color: var(--ink-2); font-weight: 300; max-width: 62ch; }
+.modal-card p { margin: 0 0 10px; }
+.modal-card em { color: var(--ink); font-style: italic; }
+.eq {
+  font-family: var(--font-display);
+  font-size: 22px !important;
+  color: var(--ink) !important;
+  text-align: center;
+  padding: 10px 0;
+  margin: 6px 0 14px !important;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  max-width: none !important;
+}
+.facts { padding-left: 18px; margin: 0; }
+.facts li { margin-bottom: 4px; }
+.keys { display: grid; gap: 6px; margin: 0; }
+.keys > div { display: grid; grid-template-columns: 180px 1fr; gap: 12px; font-size: 13px; }
+.keys dt { font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
+.keys dd { margin: 0; color: var(--ink-2); }
+
+.fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: var(--gutter);
+  text-align: center;
+  background: var(--void);
+}
+.fallback h2 { margin: 0; font-family: var(--font-display); font-weight: 300; font-size: 40px; }
+.fallback p { margin: 0 auto; max-width: 36em; color: var(--ink-2); }
+
+/* ------------------------------------------------------------------ responsive */
+@media (max-width: 1180px) {
+  .hint { display: none; }
+  .caption { width: min(520px, calc(100vw - 2 * var(--gutter))); min-width: 0; bottom: calc(var(--gutter) + var(--safe-b) + 0px); }
+  body.touring .instruments, body.touring .diagram { opacity: 0; pointer-events: none; }
+}
+@media (max-width: 760px) {
+  .wordmark { font-size: 24px; }
+  .tagline { font-size: 10px; }
+  .toolbar { top: auto; bottom: calc(var(--gutter) + var(--safe-b)); left: var(--gutter); right: var(--gutter); justify-content: space-between; }
+  .tool.text { padding: 0 10px; font-size: 12.5px; }
+  .tool .long { display: none; }
+  .tool .short { display: inline; }
+  #btn-full { display: none; }
+  .eyebrow { font-size: 10px; letter-spacing: 0.14em; }
+  .diagram { display: none; }
+  .hint { display: none; }
+  .instruments {
+    top: calc(var(--gutter) + var(--safe-t) + 58px);
+    bottom: auto;
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    padding: 9px 12px 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 12px;
+  }
+  .ins-head { grid-column: 1 / -1; padding-bottom: 6px; }
+  .readouts { margin-top: 6px; grid-column: 1 / -1; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+  .readouts > div { grid-template-columns: 1fr; gap: 0; }
+  .instruments .readouts > div:nth-child(n+3), .instruments .playback { display: none; }
+  .readouts dd { font-size: 12px; }
+  .readouts dd small { display: none; }
+  .clocks { grid-column: 1 / -1; margin-top: 8px; padding-top: 6px; }
+  body.controls-open .instruments { display: none; }
+  .toast { top: auto; bottom: calc(var(--gutter) + var(--safe-b) + 62px); }
+  .ins-head strong { font-size: 17px; }
+  .clocks output { font-size: 13px; }
+  .caption { bottom: calc(var(--gutter) + var(--safe-b) + 54px); padding: 14px 16px 12px; }
+  .caption h2 { font-size: 28px; }
+  .caption p { font-size: 13.5px; }
+  .drawer { top: auto; left: var(--gutter); right: var(--gutter); width: auto; height: 62vh; bottom: calc(var(--gutter) + var(--safe-b) + 54px); }
+  .modal-card { padding: 28px 22px 22px; }
+  .modal-card h2 { font-size: 30px; }
+  .keys > div { grid-template-columns: 1fr; gap: 0; }
+  .intro-foot { justify-content: center; text-align: center; }
+  body.touring .instruments { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body class="intro-open">
+<canvas id="view" aria-label="A black hole and its accretion disk, ray traced in real time"></canvas>
+
+<div id="ui" class="ui">
+  <header class="brand">
+    <p class="wordmark">Event Horizon</p>
+    <p class="tagline"><span id="brand-bh">Sagittarius A*</span><span class="dot">·</span><span id="brand-mass">4.3 million suns</span></p>
+  </header>
+
+  <nav class="toolbar" aria-label="Main">
+    <button id="btn-tour" class="tool text" type="button" aria-pressed="false">Tour</button>
+    <button id="btn-controls" class="tool text" type="button" aria-expanded="false" aria-controls="controls">Controls</button>
+    <button id="btn-about" class="tool text" type="button"><span class="long">How it works</span><span class="short">About</span></button>
+    <span class="sep" aria-hidden="true"></span>
+    <button id="btn-sound" class="tool icon" type="button" aria-pressed="false" title="Sound (M)" aria-label="Sound">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="on" d="M4 9v6h4l5 4V5L8 9H4z M16.5 8.5a5 5 0 0 1 0 7 M19 6a8.5 8.5 0 0 1 0 12"/><path class="off" d="M4 9v6h4l5 4V5L8 9H4z M17 9.5l5 5 M22 9.5l-5 5"/></svg>
+    </button>
+    <button id="btn-capture" class="tool icon" type="button" title="Save image (P)" aria-label="Save image">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    </button>
+    <button id="btn-hide" class="tool icon" type="button" title="Hide interface (H)" aria-label="Hide interface">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+    <button id="btn-full" class="tool icon" type="button" title="Full screen (F)" aria-label="Full screen">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5"/></svg>
+    </button>
+  </nav>
+
+  <section id="instruments" class="panel instruments" aria-label="Instruments">
+    <header class="ins-head">
+      <span class="label">Observer</span>
+      <strong id="ins-observer">Hovering</strong>
+    </header>
+    <dl class="readouts">
+      <div><dt>Distance</dt><dd><span id="ins-r">26.0</span> r<sub>s</sub><small id="ins-r-phys"></small></dd></div>
+      <div><dt>Your time</dt><dd id="ins-dilation"></dd></div>
+      <div><dt>Shadow</dt><dd id="ins-shadow"></dd></div>
+      <div><dt>Your speed</dt><dd id="ins-speed"></dd></div>
+      <div id="row-thrust"><dt>Hover thrust</dt><dd id="ins-thrust"></dd></div>
+      <div><dt>Tidal stretch</dt><dd><span id="ins-tidal"></span><small>across a 2 m body</small></dd></div>
+    </dl>
+    <div class="clocks">
+      <div><span class="label">Your watch</span><output id="clock-local">00:00.00</output></div>
+      <div><span class="label">Far away</span><output id="clock-far">00:00.00</output></div>
+    </div>
+    <p class="playback" id="ins-playback"></p>
+  </section>
+
+  <figure id="diagram" class="panel diagram">
+    <canvas id="diagram-canvas" aria-label="Side-view diagram of light paths around the black hole"></canvas>
+    <figcaption>
+      <span class="label">Light paths · side view</span>
+      <ul class="legend">
+        <li class="sky">reach the stars</li>
+        <li class="disk">hit the disk</li>
+        <li class="hole">fall in</li>
+      </ul>
+    </figcaption>
+  </figure>
+
+  <section id="caption" class="caption" hidden aria-live="polite">
+    <div class="cap-head">
+      <span id="cap-count" class="count">01 / 08</span>
+      <div class="progress" aria-hidden="true"><i id="cap-progress"></i></div>
+    </div>
+    <h2 id="cap-title"></h2>
+    <p id="cap-body"></p>
+    <div id="cap-control" class="cap-control"></div>
+    <div class="cap-nav">
+      <button id="cap-prev" type="button">Back</button>
+      <button id="cap-exit" type="button">Leave tour</button>
+      <button id="cap-next" type="button" class="primary">Next</button>
+    </div>
+  </section>
+
+  <aside id="controls" class="drawer" hidden aria-label="Controls">
+    <header class="drawer-head">
+      <h2>Controls</h2>
+      <button id="controls-close" class="close" type="button" aria-label="Close controls">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="drawer-body">
+      <section class="group">
+        <h3>Black hole</h3>
+        <div class="seg" id="seg-mass" role="radiogroup" aria-label="Black hole"></div>
+        <p class="note" id="note-mass"></p>
+      </section>
+      <section class="group">
+        <h3>You are</h3>
+        <div class="seg" id="seg-observer" role="radiogroup" aria-label="Observer"></div>
+        <p class="note" id="note-observer"></p>
+      </section>
+      <section class="group" id="group-spacetime"><h3>Spacetime</h3></section>
+      <section class="group" id="group-disk"><h3>Accretion disk</h3></section>
+      <section class="group" id="group-light"><h3>Light</h3></section>
+      <section class="group" id="group-camera"><h3>Camera</h3></section>
+      <section class="group">
+        <h3>Rendering</h3>
+        <div class="seg" id="seg-quality" role="radiogroup" aria-label="Quality"></div>
+        <p class="note mono" id="perf"></p>
+      </section>
+      <button id="c-reset" class="reset" type="button">Reset everything</button>
+    </div>
+  </aside>
+
+  <p id="hint" class="hint">Drag to orbit · Scroll to move closer · Right-drag to look around</p>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+
+<section id="intro" class="intro" aria-labelledby="intro-title">
+  <div class="intro-inner">
+    <p class="eyebrow">A real-time general-relativistic ray tracer</p>
+    <h1 id="intro-title" class="intro-title">Event Horizon</h1>
+    <p class="lede">Every pixel on this screen follows a ray of light backwards through curved spacetime, around a black hole four million times the mass of the Sun.</p>
+    <div class="intro-actions">
+      <button id="intro-tour" class="primary" type="button" disabled>Take the tour <small>8 chapters, about 3 minutes</small></button>
+      <button id="intro-free" type="button" disabled>Explore freely</button>
+    </div>
+    <label class="check" for="intro-sound"><input type="checkbox" id="intro-sound" checked> Sound, best with headphones</label>
+    <p id="intro-status" class="status" role="status">Compiling spacetime…</p>
+  </div>
+  <footer class="intro-foot">
+    <span>Made by <span id="author">Selim Fata</span></span>
+    <span>WebGL2 · written from scratch · no libraries</span>
+  </footer>
+</section>
+
+<div id="ending" class="ending" hidden>
+  <p id="ending-body"></p>
+  <div class="intro-actions">
+    <button id="ending-free" class="primary" type="button">Explore freely</button>
+    <button id="ending-again" type="button">Watch the tour again</button>
+  </div>
+</div>
+
+<div id="about" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="about-title">
+  <div class="modal-card">
+    <button id="about-close" class="close" type="button" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <p class="eyebrow">How it works</p>
+    <h2 id="about-title">Following light through curved spacetime</h2>
+
+    <p>A camera normally gathers light that travels in straight lines. Near a black hole light falls, so this renderer runs the photon's journey in reverse: for each pixel it launches a ray from your eye and follows it back through the Schwarzschild geometry of a non-rotating black hole until it lands on the glowing disk, escapes to the stars, or crosses the event horizon.</p>
+
+    <h3>The orbit of a photon</h3>
+    <p>In Schwarzschild coordinates, with u = 1/r, a light ray obeys the Binet equation</p>
+    <p class="eq">d²u/dφ² + u = <sup>3</sup>⁄<sub>2</sub> r<sub>s</sub> u²</p>
+    <p>which is exactly the orbit of a particle pushed by the fictitious force <span class="mono">a = −(3/2) h² x / r⁵</span>, where h = |x × v| stays constant. The fragment shader integrates this with velocity Verlet, with each step bounded by the integrator's local error: up to 480 steps for every pixel, every frame. The camera's local frame is converted to coordinates exactly, so the shadow edge lands within half a percent of the analytic critical impact parameter, 3√3⁄2 r<sub>s</sub>.</p>
+
+    <h3>The colours are physics</h3>
+    <p>The disk follows the Novikov–Thorne temperature profile, T ∝ r<sup>−3/4</sup>(1 − √(r<sub>in</sub>/r))<sup>1/4</sup>, with its inner edge at the innermost stable circular orbit, 3 r<sub>s</sub>. Colours come from integrating Planck's law against the CIE 1931 colour-matching functions. Because I<sub>ν</sub>/ν³ is conserved along a ray, a blackbody at temperature T seen with frequency shift g is exactly a blackbody at g·T, so the Doppler shift, the beaming and the gravitational redshift all come from one lookup:</p>
+    <p class="eq">g = √(1 − r<sub>s</sub>/r) · √(1 − v²) ⁄ (1 − Ω b<sub>z</sub>)</p>
+    <p>Here v is the orbital speed of the gas, Ω its angular velocity and b<sub>z</sub> the photon's angular momentum about the disk axis. The same shift is applied to every star.</p>
+
+    <h3>Three ways to be near a black hole</h3>
+    <p>What you see depends on how you move. A <em>hovering</em> observer fights gravity with rockets and sees the universe shrink into a blueshifted window overhead. An <em>orbiting</em> observer sees the sky aberrated by their orbital speed. A <em>falling</em> observer moves with the light and sees a calmer sky. Each view applies relativistic aberration and Doppler shift for the observer's velocity before tracing begins.</p>
+
+    <h3>Built from scratch</h3>
+    <ul class="facts">
+      <li>WebGL2 with hand-written GLSL. No engine and no libraries.</li>
+      <li>A procedural Milky Way, nebulae and a distant galaxy baked once into an HDR cubemap; stars drawn analytically, widened and dimmed by how much lensing compresses each pixel.</li>
+      <li>HDR pipeline: physically based bloom, auto exposure, AgX tone mapping, film grain.</li>
+      <li>Temporal anti-aliasing that blends jittered frames while the view is still, and a photo mode that saves a supersampled still.</li>
+      <li>Step sizes bounded by the integrator's own error, and dynamic resolution driven by GPU timer queries, so the frame rate holds on anything from a phone to a desktop GPU.</li>
+      <li>The light-path diagram re-integrates the same equations on the CPU.</li>
+      <li>A Web Audio drone whose pitch follows the blueshift at your position.</li>
+    </ul>
+
+    <h3>What it leaves out</h3>
+    <p>The black hole does not spin, so there is no frame dragging. The disk is geometrically thin, and its turbulence is a texture rather than a fluid simulation. Light travel time across the scene is ignored.</p>
+
+    <h3>Keys</h3>
+    <dl class="keys">
+      <div><dt>Drag</dt><dd>Orbit</dd></div>
+      <div><dt>Scroll · pinch · W S</dt><dd>Move closer or further</dd></div>
+      <div><dt>Right-drag · Shift-drag</dt><dd>Look around</dd></div>
+      <div><dt>Space</dt><dd>Pause time</dd></div>
+      <div><dt>← →</dt><dd>Previous or next chapter</dd></div>
+      <div><dt>T · C · H</dt><dd>Tour · controls · hide interface</dd></div>
+      <div><dt>P · F · M</dt><dd>Save image · full screen · sound</dd></div>
+    </dl>
+  </div>
+</div>
+
+<div id="fallback" class="fallback" hidden>
+  <p class="eyebrow">Event Horizon</p>
+  <h2>This browser can't run the simulation</h2>
+  <p id="fallback-msg">It needs WebGL2. A recent version of Chrome, Edge, Firefox or Safari on a computer or phone with a GPU will work.</p>
+</div>
+
+<noscript><div class="fallback"><p class="eyebrow">Event Horizon</p><h2>JavaScript is switched off</h2><p>This simulation runs entirely in your browser and needs JavaScript and WebGL2.</p></div></noscript>
+<script type="module">
+// ---- js/gl.js
+const __mod_js_gl = (() => {
+
+// A deliberately small WebGL2 toolkit: programs with reflected uniforms,
+// HDR render targets and a vertex-buffer-free fullscreen triangle.
+
+const FULLSCREEN_VS = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+class GPU {
+  constructor(canvas) {
+    const gl = canvas.getContext('webgl2', {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: false,
+      powerPreference: 'high-performance',
+    });
+    if (!gl) throw new Error('WEBGL2_UNAVAILABLE');
+    this.gl = gl;
+    this.canvas = canvas;
+    this.floatTargets = !!gl.getExtension('EXT_color_buffer_float');
+    if (!this.floatTargets) this.halfTargets = !!gl.getExtension('EXT_color_buffer_half_float');
+    gl.getExtension('OES_texture_float_linear');
+    this.hdrFormat = this.floatTargets || this.halfTargets
+      ? { internal: gl.RGBA16F, format: gl.RGBA, type: gl.HALF_FLOAT }
+      : { internal: gl.RGBA8, format: gl.RGBA, type: gl.UNSIGNED_BYTE };
+    this.hdr = this.floatTargets || this.halfTargets;
+    this.vao = gl.createVertexArray();
+    gl.bindVertexArray(this.vao);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+  }
+
+  program(name, fsSource, vsSource = FULLSCREEN_VS) {
+    return new Program(this.gl, name, vsSource, fsSource);
+  }
+
+  texture2D(w, h, { internal, format, type, filter, wrap, data = null } = {}) {
+    const gl = this.gl;
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internal ?? this.hdrFormat.internal, w, h, 0,
+      format ?? this.hdrFormat.format, type ?? this.hdrFormat.type, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter ?? gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter ?? gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap ?? gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap ?? gl.CLAMP_TO_EDGE);
+    return tex;
+  }
+
+  target(w, h) {
+    const gl = this.gl;
+    const tex = this.texture2D(w, h);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (status !== gl.FRAMEBUFFER_COMPLETE) throw new Error(`Framebuffer incomplete (0x${status.toString(16)})`);
+    return { fb, tex, w, h };
+  }
+
+  dispose(target) {
+    if (!target) return;
+    this.gl.deleteFramebuffer(target.fb);
+    this.gl.deleteTexture(target.tex);
+  }
+
+  // Draw a fullscreen pass into `target` (null = the canvas).
+  pass(program, target, uniforms = {}, viewport = null) {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fb : null);
+    const w = viewport ? viewport[0] : target ? target.w : gl.drawingBufferWidth;
+    const h = viewport ? viewport[1] : target ? target.h : gl.drawingBufferHeight;
+    gl.viewport(0, 0, w, h);
+    program.use(uniforms);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+}
+
+class Program {
+  constructor(gl, name, vs, fs) {
+    this.gl = gl;
+    this.name = name;
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, vs, name));
+    gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, fs, name));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      throw new Error(`[${name}] link failed: ${gl.getProgramInfoLog(prog)}`);
+    }
+    this.prog = prog;
+    this.uniforms = new Map();
+    let unit = 0;
+    const count = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < count; i++) {
+      const info = gl.getActiveUniform(prog, i);
+      const loc = gl.getUniformLocation(prog, info.name);
+      const sampler = info.type === gl.SAMPLER_2D || info.type === gl.SAMPLER_CUBE || info.type === gl.SAMPLER_3D;
+      this.uniforms.set(info.name, {
+        loc,
+        type: info.type,
+        unit: sampler ? unit++ : -1,
+        target: info.type === gl.SAMPLER_CUBE ? gl.TEXTURE_CUBE_MAP : info.type === gl.SAMPLER_3D ? gl.TEXTURE_3D : gl.TEXTURE_2D,
+      });
+    }
+  }
+
+  use(values) {
+    const gl = this.gl;
+    gl.useProgram(this.prog);
+    for (const key in values) {
+      const u = this.uniforms.get(key);
+      if (!u) continue; // optimised away or unused in this program
+      const v = values[key];
+      switch (u.type) {
+        case gl.FLOAT: gl.uniform1f(u.loc, v); break;
+        case gl.FLOAT_VEC2: gl.uniform2fv(u.loc, v); break;
+        case gl.FLOAT_VEC3: gl.uniform3fv(u.loc, v); break;
+        case gl.FLOAT_VEC4: gl.uniform4fv(u.loc, v); break;
+        case gl.INT: case gl.BOOL: gl.uniform1i(u.loc, v); break;
+        case gl.FLOAT_MAT3: gl.uniformMatrix3fv(u.loc, false, v); break;
+        case gl.SAMPLER_2D: case gl.SAMPLER_CUBE: case gl.SAMPLER_3D:
+          gl.activeTexture(gl.TEXTURE0 + u.unit);
+          gl.bindTexture(u.target, v);
+          gl.uniform1i(u.loc, u.unit);
+          break;
+        default: throw new Error(`[${this.name}] unsupported uniform type for ${key}`);
+      }
+    }
+  }
+}
+
+function compile(gl, type, source, name) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, source);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(sh);
+    const numbered = source.split('\n').map((l, i) => `${String(i + 1).padStart(4)}: ${l}`).join('\n');
+    console.error(numbered);
+    throw new Error(`[${name}] ${type === gl.VERTEX_SHADER ? 'vertex' : 'fragment'} shader: ${log}`);
+  }
+  return sh;
+}
+
+return { FULLSCREEN_VS, GPU };
+})();
+
+// ---- js/shaders/trace.js
+const __mod_js_shaders_trace = (() => {
+
+// The ray tracer. One fragment = one photon, followed backwards in time from the
+// camera through Schwarzschild spacetime.
+//
+// Units: Schwarzschild radius r_s = 1 (so M = 1/2, G = c = 1). Positions are
+// Schwarzschild coordinates (r, θ, φ) laid out as a flat Cartesian embedding.
+// In that picture a photon obeys the Binet equation u'' + u = (3/2) r_s u², which
+// is exactly the orbit of a particle under the acceleration
+//
+//        a = −(3/2) · h² · x / r⁵,     h = |x × v| (conserved)
+//
+// We integrate it with velocity Verlet and a step proportional to r.
+
+const TRACE_FS = /* glsl */ `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+precision highp samplerCube;
+
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform vec2  uRes;
+uniform vec3  uCamPos;
+uniform vec3  uCamRight;
+uniform vec3  uCamUp;
+uniform vec3  uCamFwd;
+uniform float uTanHalfFov;
+uniform vec2  uLensShift;     // off-centre projection, in NDC (like a shift lens)
+uniform vec2  uJitter;        // sub-pixel offset for temporal anti-aliasing
+uniform vec3  uObsVel;        // observer velocity relative to a static observer (units of c)
+uniform float uTime;          // coordinate time, units of r_s / c
+uniform int   uMaxSteps;
+uniform float uStepK;         // largest step, as a fraction of r
+uniform float uStepErr;       // local integration error allowed per step
+uniform float uCurvature;     // 0 = flat spacetime, 1 = Schwarzschild
+uniform float uDiskOn;
+uniform float uDiskInner;
+uniform float uDiskOuter;
+uniform float uDiskTemp;      // peak temperature, kelvin
+uniform float uDiskDensity;
+uniform float uDiskGain;
+uniform float uCorona;       // brightness of the thick, optically thin layer around the disk
+uniform float uDoppler;       // 0..1 blend of kinematic shifts
+uniform float uGravShift;     // 0..1 blend of gravitational shifts
+uniform float uStarGain;
+uniform float uSkyGain;
+uniform sampler2D uBlackbody;
+uniform samplerCube uSky;
+
+#define MAX_STEPS 640
+#define BB_SIZE 1024.0
+
+// ---------------------------------------------------------------- blackbody
+vec4 bbTexel(float T) {
+  float u = (log(max(T, 1.0)) - 5.70378247) / 6.90775528; // ln(300) .. ln(300000)
+  u = clamp(u, 0.0, 1.0) * (BB_SIZE - 1.0) / BB_SIZE + 0.5 / BB_SIZE;
+  return textureLod(uBlackbody, vec2(u, 0.5), 0.0);
+}
+// Linear sRGB radiance of a blackbody at T, relative to 6500 K = 1.
+vec3 blackbody(float T) {
+  vec4 s = bbTexel(T);
+  return s.rgb * exp2(s.a);
+}
+
+// ---------------------------------------------------------------- noise
+float hash13(vec3 p3) {
+  p3 = fract(p3 * 0.1031);
+  p3 += dot(p3, p3.zyx + 31.32);
+  return fract((p3.x + p3.y) * p3.z);
+}
+float vnoise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  vec3 u = f * f * (3.0 - 2.0 * f);
+  float a = hash13(i);
+  float b = hash13(i + vec3(1.0, 0.0, 0.0));
+  float c = hash13(i + vec3(0.0, 1.0, 0.0));
+  float d = hash13(i + vec3(1.0, 1.0, 0.0));
+  float e = hash13(i + vec3(0.0, 0.0, 1.0));
+  float f1 = hash13(i + vec3(1.0, 0.0, 1.0));
+  float g = hash13(i + vec3(0.0, 1.0, 1.0));
+  float h = hash13(i + vec3(1.0, 1.0, 1.0));
+  return mix(mix(mix(a, b, u.x), mix(c, d, u.x), u.y),
+             mix(mix(e, f1, u.x), mix(g, h, u.x), u.y), u.z);
+}
+float fbm4(vec3 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) {
+    s += a * vnoise(p);
+    p = p * 2.13 + vec3(1.7, 9.2, 3.1);
+    a *= 0.5;
+  }
+  return s / 0.9375;
+}
+
+// ---------------------------------------------------------------- accretion disk
+// Turbulence at log-radius lr and corotating azimuth a: broad clumps plus thin
+// arcs that are stretched along the orbit.
+float diskLayer(float lr, float a, float seed) {
+  float ca = cos(a), sa = sin(a);
+  float base = fbm4(vec3(ca * 1.5, sa * 1.5, lr * 7.0 + seed));
+  float arcs = fbm4(vec3(ca * 3.4, sa * 3.4, lr * 36.0 + seed * 1.7));
+  return base * 0.68 + arcs * 0.32;
+}
+
+// The pattern is advected by Keplerian differential rotation. Two copies, half a
+// cycle apart, are cross-faded so the shear never winds up without bound; the
+// blend is renormalised so the turbulence keeps its contrast mid-fade.
+float diskTurbulence(float r, float phi) {
+  const float P = 90.0;
+  float omega = sqrt(0.5 / (r * r * r));
+  float ph = fract(uTime / P);
+  float ph2 = fract(ph + 0.5);
+  float w = 1.0 - abs(2.0 * ph - 1.0);
+  float lr = log(r);
+  float n1 = diskLayer(lr, phi + omega * ph * P, 0.0);
+  float n2 = diskLayer(lr, phi + omega * ph2 * P, 23.7);
+  float n = 0.5 + (mix(n2, n1, w) - 0.5) * inversesqrt(w * w + (1.0 - w) * (1.0 - w));
+  return clamp((n - 0.5) * 2.4 + 0.5, 0.0, 1.0);
+}
+
+float diskProfile(float r) {
+  // Novikov–Thorne / Shakura–Sunyaev profile with zero torque at the ISCO.
+  float x = uDiskInner / r;
+  return r > uDiskInner ? pow(x, 0.75) * pow(1.0 - sqrt(x), 0.25) / 0.48795 : 0.0;
+}
+
+// Frequency shift g = ν_observed / ν_emitted for gas on circular orbits.
+float diskShift(float r, float Ly, float camGrav, float camKin) {
+  float omega = sqrt(0.5 / (r * r * r));
+  float v2 = min(0.5 / max(r - uCurvature, 1e-3), 0.995);   // orbital speed² seen by a static observer
+  float kin = sqrt(1.0 - v2) / max(1.0 - omega * Ly, 1e-3); // Doppler + transverse time dilation
+  float grav = sqrt(max(1.0 - uCurvature / r, 1e-5));        // climbing out of the well
+  return mix(1.0, kin * camKin, uDoppler) * mix(1.0, grav * camGrav, uGravShift);
+}
+
+float erfApprox(float x) {
+  float s = sign(x);
+  x = abs(x);
+  float t = 1.0 / (1.0 + 0.47047 * x);
+  float y = 1.0 - t * (0.3480242 + t * (-0.0958798 + t * 0.7478556)) * exp(-x * x);
+  return s * y;
+}
+
+// Emission and optical depth where the ray crosses the disk plane.
+// Ly is the photon's angular momentum about the disk axis per unit energy.
+vec4 shadeDisk(vec3 p, float r, vec3 rayDir, float Ly, float camGrav, float camKin) {
+  float rin = uDiskInner;
+  float prof = diskProfile(r);
+
+  float phi = atan(p.z, p.x);
+  float n = diskTurbulence(r, phi);
+  float lanes = 0.5 + 0.5 * sin(r * 13.0 + n * 6.0);
+  float env = smoothstep(rin * 0.985, rin * 1.06, r) * (1.0 - smoothstep(uDiskOuter * 0.5, uDiskOuter, r));
+  float dens = (0.04 + 1.5 * pow(n, 2.2)) * (0.78 + 0.22 * lanes) * env;
+  // Denser filaments run hotter.
+  float T = uDiskTemp * prof * (0.8 + 0.4 * n);
+
+  float g = diskShift(r, Ly, camGrav, camKin);
+  float tau = uDiskDensity * dens / max(abs(rayDir.y), 0.04);
+  vec3 S = blackbody(T * g) * uDiskGain * (0.35 + 0.9 * n);
+  return vec4(S, tau);
+}
+
+// ---------------------------------------------------------------- sky
+// Procedural stars on a cube-sphere grid. Each cell holds at most one star kept
+// away from the cell border, so a single lookup per layer is enough. The pixel
+// footprint (how much sky one pixel covers after lensing) widens and dims stars
+// that are being demagnified, which keeps them from sparkling.
+vec3 starLayer(vec3 d, float N, float density, float gain, float fp, float g, float seed) {
+  vec3 a = abs(d);
+  vec2 uv; float face; float sgn;
+  if (a.x >= a.y && a.x >= a.z) { uv = d.yz / a.x; face = 0.0; sgn = sign(d.x); }
+  else if (a.y >= a.z)          { uv = d.xz / a.y; face = 2.0; sgn = sign(d.y); }
+  else                          { uv = d.xy / a.z; face = 4.0; sgn = sign(d.z); }
+  face += sgn > 0.0 ? 0.0 : 1.0;
+  vec2 cell = floor((uv * 0.5 + 0.5) * N);
+  vec3 cid = vec3(cell, face * 13.0 + seed);
+  float h = hash13(cid);
+  if (h > density) return vec3(0.0);
+  vec2 off = 0.25 + 0.5 * vec2(hash13(cid + 11.17), hash13(cid + 23.71));
+  vec2 suv = (cell + off) / N * 2.0 - 1.0;
+  vec3 sd;
+  if (face < 1.5)      sd = vec3(sgn, suv.x, suv.y);
+  else if (face < 3.5) sd = vec3(suv.x, sgn, suv.y);
+  else                 sd = vec3(suv.x, suv.y, sgn);
+  sd = normalize(sd);
+  vec3 dd = d - sd;
+  float dist2 = dot(dd, dd);
+  float cellAng = 2.0 / N;
+  float sig = 0.00045;
+  float s2 = sig * sig + 0.3 * fp * fp;
+  float fade = 1.0 - smoothstep(0.04, 0.08, sqrt(s2) / cellAng);
+  float m = hash13(cid + 5.3);
+  float bright = gain * (0.03 + 0.4 * pow(m, 4.0) + 9.0 * pow(m, 30.0));
+  float ht = hash13(cid + 41.9);
+  float T = 3600.0 + 8000.0 * pow(ht, 1.6) + step(0.93, ht) * 14000.0;
+  vec3 col = blackbody(T * g) / exp2(bbTexel(T).a);
+  col = mix(vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), col, 0.7);
+  return col * bright * (sig * sig / s2) * exp(-0.5 * dist2 / s2) * fade;
+}
+
+mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c); }
+mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
+
+vec3 skyColor(vec3 d, float fp, float g) {
+  vec3 neb = texture(uSky, d).rgb * blackbody(6500.0 * g) * uSkyGain;
+  vec3 s = vec3(0.0);
+  s += starLayer(d, 46.0, 0.3, 1.0, fp, g, 1.0);
+  s += starLayer(rotX(0.71) * rotY(0.37) * d, 90.0, 0.6, 0.3, fp, g, 2.0);
+  s += starLayer(rotY(1.93) * rotX(-0.52) * d, 150.0, 0.8, 0.12, fp, g, 3.0);
+  return neb + s * uStarGain;
+}
+
+// ---------------------------------------------------------------- main
+void main() {
+  vec2 ndc = ((gl_FragCoord.xy + uJitter) / uRes) * 2.0 - 1.0 - uLensShift;
+  float aspect = uRes.x / uRes.y;
+  vec3 sObs = normalize(uCamFwd + ndc.x * aspect * uTanHalfFov * uCamRight + ndc.y * uTanHalfFov * uCamUp);
+
+  // Relativistic aberration: observer frame -> local static frame.
+  float beta = length(uObsVel);
+  vec3 sStat = sObs;
+  float gammaObs = 1.0;
+  if (beta > 1e-5) {
+    vec3 bh = uObsVel / beta;
+    float c1 = dot(sObs, bh);
+    float c = (c1 - beta) / (1.0 - beta * c1);
+    vec3 perp = sObs - c1 * bh;
+    float pl = length(perp);
+    sStat = c * bh + (pl > 1e-7 ? perp / pl : vec3(0.0)) * sqrt(max(0.0, 1.0 - c * c));
+    gammaObs = inversesqrt(1.0 - beta * beta);
+  }
+
+  float r0 = length(uCamPos);
+  vec3 rhat = uCamPos / r0;
+  float lapse0 = sqrt(max(1.0 - uCurvature / r0, 1e-6));
+  // Frequency of a photon at the camera relative to its frequency far away.
+  float camGrav = 1.0 / lapse0;
+  float camKin = gammaObs * (1.0 + dot(uObsVel, sStat));
+
+  // Local static frame -> coordinate direction: the radial component shrinks by the lapse.
+  float sr = dot(sStat, rhat);
+  vec3 dir = normalize(sStat + rhat * sr * (lapse0 - 1.0));
+
+  vec3 hv = cross(uCamPos, dir);
+  float h2 = dot(hv, hv);
+  float sinA = length(cross(sStat, rhat));
+  float bImpact = r0 * sinA / lapse0;
+  float Ly = h2 > 1e-14 ? -bImpact * hv.y * inversesqrt(h2) : 0.0;
+
+  float k = 1.5 * h2 * uCurvature;
+  vec3 pos = uCamPos;
+  vec3 vel = dir;
+  float rr = r0;
+  vec3 acc = -k * pos / (rr * rr * rr * rr * rr);
+  vec3 col = vec3(0.0);
+  float trans = 1.0;
+  bool captured = false;
+  float escapeR = max(r0 * 1.02, 34.0);
+  float travelled = 0.0;
+  bool diskActive = uDiskOn > 0.001;
+
+  for (int i = 0; i < MAX_STEPS; i++) {
+    if (i >= uMaxSteps) break;
+    // Adaptive step: at most a fraction of r (more far out, where space is nearly
+    // flat), and short enough that Verlet's local error, which grows with the rate
+    // of change of the force (4k / r⁵), stays below uStepErr. Rays grazing the
+    // photon sphere get fine steps; rays passing far from the hole take long ones.
+    float r5 = rr * rr * rr * rr * rr;
+    float geometric = uStepK * rr * min(1.0 + max(rr - 8.0, 0.0) * 0.06, 2.0);
+    float errorLimited = pow(uStepErr * r5 / (4.0 * max(k, 1e-9)), 0.3333333);
+    float dl = clamp(min(geometric, errorLimited), 0.004, 60.0);
+    vec3 np = pos + vel * dl + 0.5 * acc * dl * dl;
+    float nr2 = dot(np, np);
+    float nr = sqrt(nr2);
+    vec3 na = -k * np / (nr2 * nr2 * nr);
+    vec3 nv = vel + 0.5 * (acc + na) * dl;
+
+    // Corona: an optically thin Gaussian layer of height H around the disk. The
+    // density is integrated exactly along each straight step (erf), so coarse
+    // steps do not band.
+    // Cheap test first (the layer is at most 2.3·H thick, H ≤ 0.042·r + 0.05).
+    float ylo = min(abs(pos.y), abs(np.y));
+    if (diskActive && uCorona > 0.0 && trans > 0.02 && ylo < 0.1 * max(rr, nr) + 0.12) {
+      vec3 mid = 0.5 * (pos + np);
+      float rc = length(mid.xz);
+      float H = 0.042 * rc + 0.05;
+      if (ylo < 2.3 * H && rc > uDiskInner * 0.9 && rc < uDiskOuter) {
+        float dy = np.y - pos.y;
+        float path = abs(dy) > 1e-4 * dl
+          ? dl * H * 0.886227 * abs(erfApprox(np.y / H) - erfApprox(pos.y / H)) / abs(dy)
+          : dl * exp(-pos.y * pos.y / (H * H));
+        float envc = smoothstep(uDiskInner * 0.9, uDiskInner * 1.2, rc) * (1.0 - smoothstep(uDiskOuter * 0.4, uDiskOuter, rc));
+        float gc = diskShift(rc, Ly, camGrav, camKin);
+        float nearCam = smoothstep(0.0, 2.5, travelled);   // keep the lens clear of fog
+        col += trans * blackbody(uDiskTemp * diskProfile(max(rc, uDiskInner * 1.02)) * gc) * (uDiskGain * uCorona * uDiskOn * envc * nearCam * path / H);
+      }
+    }
+
+    if (diskActive && pos.y * np.y < 0.0) {
+      float t = pos.y / (pos.y - np.y);
+      vec3 hp = mix(pos, np, t);
+      float hr = length(hp.xz);
+      if (hr > uDiskInner * 0.97 && hr < uDiskOuter) {
+        vec4 em = shadeDisk(hp, hr, normalize(mix(vel, nv, t)), Ly, camGrav, camKin);
+        float alpha = (1.0 - exp(-em.a)) * uDiskOn;
+        col += trans * alpha * em.rgb;
+        trans *= 1.0 - alpha;
+        if (trans < 0.004) break;
+      }
+    }
+
+    pos = np; vel = nv; acc = na; rr = nr;
+    travelled += dl;
+    if (nr < 1.0) { captured = true; break; }
+    if (nr > escapeR && dot(np, nv) > 0.0) break;
+  }
+
+  // Kept outside any branch so screen-space derivatives stay valid.
+  vec3 skyDir = normalize(vel);
+  float fp = length(fwidth(skyDir));
+  float gSky = mix(1.0, camKin, uDoppler) * mix(1.0, camGrav, uGravShift);
+  vec3 sky = skyColor(skyDir, fp, gSky);
+  col += sky * (captured ? 0.0 : trans);
+
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+return { TRACE_FS };
+})();
+
+// ---- js/shaders/sky.js
+const __mod_js_shaders_sky = (() => {
+
+// The backdrop universe, baked once into an HDR cubemap: a Milky Way band with a
+// bulge and dust lanes, emission nebulae and one distant spiral galaxy. Point
+// stars are drawn analytically in the tracer instead, so they stay sharp.
+
+const SKY_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform int uFace;
+
+vec3 faceDir(int f, vec2 st) {
+  float sc = st.x * 2.0 - 1.0;
+  float tc = st.y * 2.0 - 1.0;
+  if (f == 0) return vec3(1.0, -tc, -sc);
+  if (f == 1) return vec3(-1.0, -tc, sc);
+  if (f == 2) return vec3(sc, 1.0, tc);
+  if (f == 3) return vec3(sc, -1.0, -tc);
+  if (f == 4) return vec3(sc, -tc, 1.0);
+  return vec3(-sc, -tc, -1.0);
+}
+
+vec3 hash33(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.xxy + p.yxx) * p.zyx) * 2.0 - 1.0;
+}
+float gnoise(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  vec3 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  float n000 = dot(hash33(i), f);
+  float n100 = dot(hash33(i + vec3(1, 0, 0)), f - vec3(1, 0, 0));
+  float n010 = dot(hash33(i + vec3(0, 1, 0)), f - vec3(0, 1, 0));
+  float n110 = dot(hash33(i + vec3(1, 1, 0)), f - vec3(1, 1, 0));
+  float n001 = dot(hash33(i + vec3(0, 0, 1)), f - vec3(0, 0, 1));
+  float n101 = dot(hash33(i + vec3(1, 0, 1)), f - vec3(1, 0, 1));
+  float n011 = dot(hash33(i + vec3(0, 1, 1)), f - vec3(0, 1, 1));
+  float n111 = dot(hash33(i + vec3(1, 1, 1)), f - vec3(1, 1, 1));
+  return mix(mix(mix(n000, n100, u.x), mix(n010, n110, u.x), u.y),
+             mix(mix(n001, n101, u.x), mix(n011, n111, u.x), u.y), u.z);
+}
+float fbm(vec3 p, int oct) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 9; i++) {
+    if (i >= oct) break;
+    s += a * gnoise(p);
+    p = p * 2.03 + vec3(5.1, 1.3, 7.7);
+    a *= 0.5;
+  }
+  return s;
+}
+float ridged(vec3 p, int oct) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 9; i++) {
+    if (i >= oct) break;
+    float n = 1.0 - abs(gnoise(p) * 2.0);
+    s += a * n * n;
+    p = p * 2.07 + vec3(2.3, 8.1, 4.4);
+    a *= 0.5;
+  }
+  return s;
+}
+
+// Galactic frame, tilted well away from the accretion disk plane.
+const vec3 GN = vec3(-0.4116, 0.8233, 0.3906);   // galactic north pole
+const vec3 GC = vec3(0.8701, 0.2785, 0.4066);    // galactic centre direction
+
+vec3 milkyWay(vec3 d) {
+  vec3 GCo = normalize(GC - dot(GC, GN) * GN);
+  vec3 GB = cross(GN, GCo);
+  float lat = dot(d, GN);
+  vec3 inPlane = normalize(d - lat * GN + 1e-6);
+  float lon = atan(dot(inPlane, GB), dot(inPlane, GCo));
+  float toCentre = acos(clamp(dot(d, GCo), -1.0, 1.0));
+
+  vec3 warp = vec3(fbm(d * 3.0, 4), fbm(d * 3.0 + 7.3, 4), fbm(d * 3.0 + 3.1, 4));
+  float wl = lat + 0.035 * warp.x;
+  float thick = 0.075 + 0.11 * exp(-lon * lon * 1.6);
+  float band = exp(-pow(wl / thick, 2.0));
+  float halo = exp(-pow(wl / (thick * 3.2), 2.0));
+  float bulge = exp(-pow(toCentre / 0.30, 2.0));
+
+  float clouds = fbm(d * 5.0 + warp * 0.6, 7) * 0.5 + 0.5;
+  float stars = band * (0.25 + 1.4 * pow(clouds, 2.2)) + halo * 0.10 + bulge * 1.6 * (0.6 + 0.4 * clouds);
+
+  // Dust lanes: ridged noise concentrated near the mid-plane.
+  float dustMask = exp(-pow((wl - 0.012 * sin(lon * 3.0)) / (thick * 0.55), 2.0));
+  float dust = smoothstep(0.42, 0.85, ridged(d * 7.0 + warp, 6)) * dustMask;
+  dust = max(dust, smoothstep(0.55, 0.9, fbm(d * 14.0 + 2.0, 5) * 0.5 + 0.5) * dustMask * 0.8);
+
+  vec3 warm = vec3(1.0, 0.80, 0.58);
+  vec3 cool = vec3(0.70, 0.78, 1.0);
+  vec3 col = mix(cool, warm, clamp(bulge * 1.4 + 0.25 - 0.3 * clouds, 0.0, 1.0)) * stars;
+  col *= 1.0 - 0.9 * dust;
+  // Reddened light at the edges of the lanes.
+  col += vec3(0.35, 0.12, 0.05) * dust * band * 0.25;
+
+  // HII regions along the arms.
+  float knots = pow(max(fbm(d * 26.0, 5) - 0.18, 0.0) * 3.2, 3.0) * band * (1.0 - dust);
+  col += vec3(1.0, 0.28, 0.42) * knots * 0.9;
+
+  // Unresolved star grain.
+  float grain = pow(max(gnoise(d * 420.0) + 0.25, 0.0), 6.0) * 30.0;
+  col += vec3(0.9, 0.92, 1.0) * grain * (band * 0.8 + halo * 0.15) * (1.0 - 0.8 * dust);
+  return col;
+}
+
+vec3 nebula(vec3 d, vec3 c, float radius, vec3 tintA, vec3 tintB, float seed) {
+  float a = acos(clamp(dot(d, c), -1.0, 1.0));
+  if (a > radius * 2.2) return vec3(0.0);
+  vec3 q = d * 6.0 + seed;
+  vec3 w = vec3(fbm(q, 5), fbm(q + 4.7, 5), fbm(q + 9.1, 5));
+  float n = fbm(q * 1.7 + w * 1.6, 7) * 0.5 + 0.5;
+  float fil = ridged(q * 2.2 + w * 2.0, 6);
+  float env = exp(-pow(a / radius, 2.0) * 1.6);
+  float m = pow(n, 2.5) * env;
+  vec3 col = mix(tintB, tintA, smoothstep(0.35, 0.75, n)) * m * 1.6;
+  col += tintA * pow(fil, 4.0) * env * 0.9;
+  return col;
+}
+
+vec3 galaxy(vec3 d) {
+  vec3 c = normalize(vec3(-0.62, -0.28, 0.73));
+  float a = acos(clamp(dot(d, c), -1.0, 1.0));
+  if (a > 0.12) return vec3(0.0);
+  vec3 t1 = normalize(cross(c, vec3(0.0, 1.0, 0.0)));
+  vec3 t2 = cross(c, t1);
+  vec2 p = vec2(dot(d, t1), dot(d, t2)) / 0.035;
+  float ang = 0.6;
+  p = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * p;
+  p.y /= 0.36; // inclined disk
+  float r = length(p);
+  float th = atan(p.y, p.x);
+  float arms = 0.5 + 0.5 * cos(2.0 * th - 4.2 * log(r + 0.05));
+  float disk = exp(-r * 2.1) * (0.5 + 0.7 * arms);
+  float core = exp(-r * r * 30.0);
+  return vec3(1.0, 0.86, 0.70) * core * 3.0 + vec3(0.75, 0.80, 1.0) * disk * 0.45;
+}
+
+void main() {
+  vec3 d = normalize(faceDir(uFace, vUv));
+  vec3 col = milkyWay(d) * 0.030;
+  col += nebula(d, normalize(vec3(0.35, -0.55, -0.76)), 0.32, vec3(1.0, 0.30, 0.38), vec3(0.20, 0.45, 0.85), 3.0) * 0.022;
+  col += nebula(d, normalize(vec3(-0.85, 0.30, -0.42)), 0.24, vec3(0.20, 0.85, 0.80), vec3(0.55, 0.25, 0.85), 11.0) * 0.016;
+  col += galaxy(d) * 0.05;
+  col += vec3(0.0012, 0.0014, 0.0022); // faint extragalactic background
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+return { SKY_FS };
+})();
+
+// ---- js/shaders/post.js
+const __mod_js_shaders_post = (() => {
+
+// Post-processing: a mip-chain bloom (13-tap downsample, tent upsample) and the
+// final composite with AgX tone mapping, film grain and the EHT "radio" view.
+
+const DOWNSAMPLE_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uSrc;
+uniform vec2 uTexel;     // 1 / source size
+uniform float uKaris;    // 1 on the first pass: suppress fireflies
+
+vec3 s(vec2 o) { return texture(uSrc, vUv + o * uTexel).rgb; }
+float w(vec3 c) { return 1.0 / (1.0 + dot(c, vec3(0.2126, 0.7152, 0.0722))); }
+
+void main() {
+  vec3 a = s(vec2(-2, 2)),  b = s(vec2(0, 2)),  c = s(vec2(2, 2));
+  vec3 d = s(vec2(-2, 0)),  e = s(vec2(0, 0)),  f = s(vec2(2, 0));
+  vec3 g = s(vec2(-2, -2)), h = s(vec2(0, -2)), i = s(vec2(2, -2));
+  vec3 j = s(vec2(-1, 1)),  k = s(vec2(1, 1));
+  vec3 l = s(vec2(-1, -1)), m = s(vec2(1, -1));
+  vec3 res;
+  if (uKaris > 0.5) {
+    vec3 g0 = (a + b + d + e) * 0.25, g1 = (b + c + e + f) * 0.25;
+    vec3 g2 = (d + e + g + h) * 0.25, g3 = (e + f + h + i) * 0.25;
+    vec3 g4 = (j + k + l + m) * 0.25;
+    float w0 = w(g0), w1 = w(g1), w2 = w(g2), w3 = w(g3), w4 = w(g4);
+    res = (g0 * w0 * 0.125 + g1 * w1 * 0.125 + g2 * w2 * 0.125 + g3 * w3 * 0.125 + g4 * w4 * 0.5)
+        / (w0 * 0.125 + w1 * 0.125 + w2 * 0.125 + w3 * 0.125 + w4 * 0.5);
+  } else {
+    res = e * 0.125 + (a + c + g + i) * 0.03125 + (b + d + f + h) * 0.0625 + (j + k + l + m) * 0.125;
+  }
+  fragColor = vec4(max(res, 0.0), 1.0);
+}
+`;
+
+const UPSAMPLE_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uSrc;
+uniform vec2 uTexel;
+uniform float uRadius;
+void main() {
+  vec2 o = uTexel * uRadius;
+  vec3 c = texture(uSrc, vUv).rgb * 4.0;
+  c += (texture(uSrc, vUv + vec2(-o.x, 0.0)).rgb + texture(uSrc, vUv + vec2(o.x, 0.0)).rgb
+      + texture(uSrc, vUv + vec2(0.0, -o.y)).rgb + texture(uSrc, vUv + vec2(0.0, o.y)).rgb) * 2.0;
+  c += texture(uSrc, vUv + vec2(-o.x, -o.y)).rgb + texture(uSrc, vUv + vec2(o.x, -o.y)).rgb
+     + texture(uSrc, vUv + vec2(-o.x, o.y)).rgb + texture(uSrc, vUv + vec2(o.x, o.y)).rgb;
+  fragColor = vec4(c / 16.0, 1.0);
+}
+`;
+
+// Temporal accumulation: an exponential moving average of jittered frames.
+// While the view is still this converges to a supersampled image; when the
+// camera moves the app raises uAlpha toward 1 so nothing smears.
+const ACCUMULATE_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uCurrent;
+uniform sampler2D uHistory;
+uniform float uAlpha;
+void main() {
+  vec3 cur = texture(uCurrent, vUv).rgb;
+  vec3 hist = texture(uHistory, vUv).rgb;
+  fragColor = vec4(mix(hist, cur, uAlpha), 1.0);
+}
+`;
+
+// Average scene luminance for auto-exposure, read from the smallest bloom level
+// (centre-weighted) and blended with last frame's value so the eye adapts
+// gradually instead of snapping.
+const LUMINANCE_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uSrc;
+uniform sampler2D uPrev;
+uniform float uBlend;
+void main() {
+  float sum = 0.0, wsum = 0.0;
+  for (int j = 0; j < 5; j++) {
+    for (int i = 0; i < 5; i++) {
+      vec2 uv = (vec2(float(i), float(j)) + 0.5) / 5.0;
+      float w = exp(-3.0 * dot(uv - 0.5, uv - 0.5));
+      sum += w * dot(texture(uSrc, uv).rgb, vec3(0.2126, 0.7152, 0.0722));
+      wsum += w;
+    }
+  }
+  float L = sum / wsum;
+  float prev = texelFetch(uPrev, ivec2(0), 0).r;
+  float outL = uBlend >= 1.0 ? L : exp(mix(log(max(prev, 1e-5)), log(max(L, 1e-5)), uBlend));
+  fragColor = vec4(outL, 0.0, 0.0, 1.0);
+}
+`;
+
+const COMPOSITE_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uHDR;
+uniform sampler2D uBloom;     // accumulated bloom (sum over levels)
+uniform sampler2D uWide;      // a heavily blurred level, for the EHT view
+uniform float uBloomLevels;
+uniform float uBloomStrength;
+uniform float uExposure;
+uniform float uEHT;
+uniform float uTime;
+uniform float uFade;          // 0 = black, 1 = image
+uniform sampler2D uLum;       // adapted average luminance (1×1)
+uniform float uAutoKey;
+uniform float uAutoStrength;
+uniform vec2 uRes;
+
+// AgX tone mapping (Troy Sobotka; polynomial fit by Benjamin Wrensch).
+vec3 agxContrast(vec3 x) {
+  vec3 x2 = x * x;
+  vec3 x4 = x2 * x2;
+  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+vec3 agx(vec3 v) {
+  const mat3 inset = mat3(0.842479062253094, 0.0423282422610123, 0.0423756549057051,
+                          0.0784335999999992, 0.878468636469772, 0.0784336,
+                          0.0792237451477643, 0.0791661274605434, 0.879142973793104);
+  const mat3 outset = mat3(1.19687900512017, -0.0528968517574562, -0.0529716355144438,
+                           -0.0980208811401368, 1.15190312990417, -0.0980434501171241,
+                           -0.0990297440797205, -0.0989611768448433, 1.15107367264116);
+  const float minEv = -12.47393, maxEv = 4.026069;
+  v = inset * v;
+  v = clamp(log2(max(v, 1e-10)), minEv, maxEv);
+  v = (v - minEv) / (maxEv - minEv);
+  v = agxContrast(v);
+  // A gentle "punchy" look.
+  float l = dot(v, vec3(0.2126, 0.7152, 0.0722));
+  v = pow(max(v, 0.0), vec3(1.1));
+  v = l + 1.3 * (v - l);
+  return clamp(outset * v, 0.0, 1.0);
+}
+
+vec3 afmhot(float x) {
+  x = clamp(x, 0.0, 1.0);
+  return clamp(vec3(2.0 * x, 2.0 * x - 0.5, 2.0 * x - 1.0), 0.0, 1.0);
+}
+
+float hash12(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+void main() {
+  vec3 hdr = texture(uHDR, vUv).rgb;
+  vec3 bloom = texture(uBloom, vUv).rgb / uBloomLevels;
+  float avg = texelFetch(uLum, ivec2(0), 0).r;
+  // Compensate strongly for glare, gently for darkness.
+  float ratio = uAutoKey / max(avg, 1e-5);
+  float autoExp = clamp(pow(ratio, ratio < 1.0 ? uAutoStrength : uAutoStrength * 0.5), 0.05, 2.5);
+  vec3 c = mix(hdr, bloom, uBloomStrength) * uExposure * autoExp;
+
+  vec3 col = agx(c);
+
+  if (uEHT > 0.001) {
+    // A planet-sized radio telescope resolves only the broad structure.
+    float L = dot(texture(uWide, vUv).rgb, vec3(0.2126, 0.7152, 0.0722)) * uExposure * autoExp;
+    L = max(L - 0.06, 0.0);   // the radio sky behind is dark
+    float x = pow(L / (L + 0.9), 0.85);
+    col = mix(col, afmhot(x * 1.15), uEHT);
+  }
+
+  vec2 q = vUv - 0.5;
+  q.x *= uRes.x / uRes.y;
+  col *= mix(1.0, 1.0 - dot(q, q) * 0.55, 0.85);
+
+  float n = hash12(gl_FragCoord.xy + fract(uTime * 7.31) * 1000.0) - 0.5;
+  col += n * (0.018 + 0.02 * (1.0 - col.g));
+  col *= uFade;
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+return { DOWNSAMPLE_FS, UPSAMPLE_FS, ACCUMULATE_FS, LUMINANCE_FS, COMPOSITE_FS };
+})();
+
+// ---- js/blackbody.js
+const __mod_js_blackbody = (() => {
+
+// Blackbody colour table.
+//
+// For every temperature we integrate Planck's law against the CIE 1931 2° colour
+// matching functions, convert XYZ to linear sRGB and white-balance so that a
+// 6500 K body is neutral. The table stores chromaticity (RGB with luminance 1)
+// in .rgb and log2 of the *absolute* visible luminance, relative to 6500 K, in .a.
+//
+// Because I_ν/ν³ is invariant along a ray, a blackbody at temperature T seen with
+// a frequency shift g is exactly a blackbody at temperature g·T. The shaders use
+// this table for the disk, the stars and the sky, so every Doppler and
+// gravitational shift in the image is just a lookup at a shifted temperature.
+
+const BB_TMIN = 300;
+const BB_TMAX = 300000;
+const BB_SIZE = 1024;
+
+// Multi-lobe Gaussian fit to the CIE 1931 observer (Wyman, Sloan & Shirley 2013).
+function lobe(x, mu, s1, s2) {
+  const t = (x - mu) / (x < mu ? s1 : s2);
+  return Math.exp(-0.5 * t * t);
+}
+function cieX(l) { return 1.056 * lobe(l, 599.8, 37.9, 31.0) + 0.362 * lobe(l, 442.0, 16.0, 26.7) - 0.065 * lobe(l, 501.1, 20.4, 26.2); }
+function cieY(l) { return 0.821 * lobe(l, 568.8, 46.9, 40.5) + 0.286 * lobe(l, 530.9, 16.3, 31.1); }
+function cieZ(l) { return 1.217 * lobe(l, 437.0, 11.8, 36.0) + 0.681 * lobe(l, 459.0, 26.0, 13.8); }
+
+// Planck spectral radiance up to a constant factor; λ in nm.
+function planck(lambdaNm, T) {
+  const l = lambdaNm * 1e-9;
+  const c2 = 1.4387769e-2; // hc/k, m·K
+  return 1 / (Math.pow(l, 5) * (Math.exp(c2 / (l * T)) - 1));
+}
+
+function blackbodyXYZ(T) {
+  let X = 0, Y = 0, Z = 0;
+  for (let l = 380; l <= 780; l += 2) {
+    const p = planck(l, T);
+    X += p * cieX(l);
+    Y += p * cieY(l);
+    Z += p * cieZ(l);
+  }
+  return [X, Y, Z];
+}
+
+function xyzToLinearSRGB([X, Y, Z]) {
+  return [
+    3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z,
+    -0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z,
+    0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z,
+  ];
+}
+
+const luma = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+
+function buildBlackbodyTable() {
+  const ref = xyzToLinearSRGB(blackbodyXYZ(6500));
+  const refY = blackbodyXYZ(6500)[1];
+  const data = new Float32Array(BB_SIZE * 4);
+  const lmin = Math.log(BB_TMIN), lmax = Math.log(BB_TMAX);
+  for (let i = 0; i < BB_SIZE; i++) {
+    const T = Math.exp(lmin + (lmax - lmin) * (i / (BB_SIZE - 1)));
+    const xyz = blackbodyXYZ(T);
+    let rgb = xyzToLinearSRGB(xyz).map((v, k) => Math.max(v / ref[k], 0));
+    const y = Math.max(luma(rgb), 1e-30);
+    rgb = rgb.map((v) => v / y);
+    data[i * 4 + 0] = rgb[0];
+    data[i * 4 + 1] = rgb[1];
+    data[i * 4 + 2] = rgb[2];
+    data[i * 4 + 3] = Math.max(Math.log2(Math.max(xyz[1], 1e-300) / refY), -120);
+  }
+  return data;
+}
+
+// CPU-side lookup for UI swatches (returns display-ready sRGB 0..255).
+function blackbodyCSS(T) {
+  const ref = xyzToLinearSRGB(blackbodyXYZ(6500));
+  let rgb = xyzToLinearSRGB(blackbodyXYZ(T)).map((v, k) => Math.max(v / ref[k], 0));
+  const m = Math.max(...rgb, 1e-9);
+  rgb = rgb.map((v) => v / m);
+  const enc = (v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+  return `rgb(${rgb.map((v) => Math.round(enc(v) * 255)).join(',')})`;
+}
+
+return { BB_TMIN, BB_TMAX, BB_SIZE, buildBlackbodyTable, blackbodyCSS };
+})();
+
+// ---- js/pacer.js
+const __mod_js_pacer = (() => {
+
+// Dynamic resolution. The number of traced pixels is sized to a GPU time budget.
+//
+// Where the browser exposes GPU timer queries (Chrome, Edge) every frame is
+// timed on the GPU itself. Elsewhere (Safari, Firefox) the pacer watches fences
+// to see whether frames are piling up in the GPU queue. Frame-to-frame timing in
+// JavaScript alone is not enough: a browser can keep firing animation frames at
+// the display rate while the GPU falls further and further behind.
+
+// GPU budget: three quarters of the frame interval the browser actually grants
+// (16.7 ms at 60 Hz; 33 ms when Low Power Mode or a battery saver caps animation
+// at 30 fps), within these bounds. The interval is read from the fast end of
+// recent frame times, so occasional long frames don't inflate it.
+const BUDGET_MIN = 10;
+const BUDGET_MAX = 26;
+const SETTLE_MS = 450;      // minimum time between resolution changes
+const MAX_IN_FLIGHT = 6;
+
+class FramePacer {
+  constructor(gl) {
+    this.gl = gl;
+    this.timer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    this.queries = [];
+    this.active = null;
+    this.fences = [];
+    this.samples = [];
+    this.dts = [];
+    this.backlog = 0;
+    this.idle = 0;
+    this.lastChange = 0;
+    this.ceiling = 1;
+    this.ceilingUntil = 0;
+    this.gpuMs = 0;
+  }
+
+  begin() {
+    if (!this.timer || this.active || this.queries.length >= 4) return;
+    const q = this.gl.createQuery();
+    this.gl.beginQuery(this.timer.TIME_ELAPSED_EXT, q);
+    this.active = q;
+  }
+
+  end() {
+    const gl = this.gl;
+    if (this.active) {
+      gl.endQuery(this.timer.TIME_ELAPSED_EXT);
+      this.queries.push(this.active);
+      this.active = null;
+    }
+    if (this.fences.length < MAX_IN_FLIGHT) this.fences.push(gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0));
+  }
+
+  // Collect finished measurements; returns how many frames are still queued.
+  poll() {
+    const gl = this.gl;
+    while (this.queries.length) {
+      const q = this.queries[0];
+      if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
+      if (!gl.getParameter(this.timer.GPU_DISJOINT_EXT)) this.samples.push(gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6);
+      gl.deleteQuery(q);
+      this.queries.shift();
+    }
+    if (this.samples.length > 24) this.samples.splice(0, this.samples.length - 24);
+    while (this.fences.length) {
+      const f = this.fences[0];
+      if (gl.getSyncParameter(f, gl.SYNC_STATUS) !== gl.SIGNALED) break;
+      gl.deleteSync(f);
+      this.fences.shift();
+    }
+    return this.fences.length;
+  }
+
+  // Given the current scale, return the scale for the next frame.
+  next(scale, dtMs, now, min, max) {
+    const inFlight = this.poll();
+    this.dts.push(dtMs);
+    if (this.dts.length > 30) this.dts.shift();
+    if (inFlight >= 2) { this.backlog++; this.idle = 0; } else { this.backlog = 0; this.idle = inFlight === 0 ? this.idle + 1 : 0; }
+
+    const recent = this.samples.slice(-10);
+    if (recent.length) this.gpuMs = median(recent);
+    if (now - this.lastChange < SETTLE_MS) return scale;
+
+    let target = scale;
+    if (this.backlog >= 4) {
+      // The GPU is several frames behind: back off hard, whatever the timers say.
+      target = scale * 0.8;
+    } else if (this.timer && recent.length >= 6 && this.dts.length >= 10) {
+      // Cost grows with pixel count, i.e. with scale².
+      const budget = Math.min(BUDGET_MAX, Math.max(BUDGET_MIN, 0.75 * percentile(this.dts, 0.1)));
+      const ratio = budget / Math.max(this.gpuMs, 0.5);
+      if (ratio < 0.9 || ratio > 1.15) target = scale * Math.min(1.1, Math.max(0.75, Math.sqrt(ratio)));
+    } else if (!this.timer && this.dts.length >= 20) {
+      const dt = median(this.dts);
+      if (this.backlog >= 2 || dt > 21) target = scale * 0.88;
+      else if (this.idle > 60 && dt < 18) target = scale * 1.05;
+    }
+
+    if (target < scale) { this.ceiling = scale; this.ceilingUntil = now + 15000; }
+    if (target > scale && now < this.ceilingUntil) target = Math.max(scale, Math.min(target, this.ceiling * 0.97));
+    target = Math.round(Math.min(max, Math.max(min, target)) * 50) / 50;
+    if (target !== scale) {
+      this.lastChange = now;
+      this.samples.length = 0;
+      this.dts.length = 0;
+      this.idle = 0;
+    }
+    return target;
+  }
+}
+
+function percentile(xs, p) {
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor(s.length * p))];
+}
+
+const median = (xs) => percentile(xs, 0.5);
+
+return { FramePacer };
+})();
+
+// ---- js/renderer.js
+const __mod_js_renderer = (() => {
+const { GPU } = __mod_js_gl;
+const { TRACE_FS } = __mod_js_shaders_trace;
+const { SKY_FS } = __mod_js_shaders_sky;
+const { DOWNSAMPLE_FS, UPSAMPLE_FS, COMPOSITE_FS, LUMINANCE_FS, ACCUMULATE_FS } = __mod_js_shaders_post;
+const { buildBlackbodyTable, BB_SIZE } = __mod_js_blackbody;
+const { FramePacer } = __mod_js_pacer;
+
+// Quality presets: integration accuracy and the largest share of device pixels
+// the tracer may render. "auto" adapts the pixel share to hold a frame rate.
+const QUALITY = {
+  low:    { steps: 160, stepK: 0.25, stepErr: 8e-3, maxScale: 0.45, label: 'Low' },
+  medium: { steps: 220, stepK: 0.22, stepErr: 4e-3, maxScale: 0.65, label: 'Medium' },
+  high:   { steps: 300, stepK: 0.2, stepErr: 2e-3, maxScale: 0.85, label: 'High' },
+  ultra:  { steps: 480, stepK: 0.12, stepErr: 5e-4, maxScale: 1.0, label: 'Ultra' },
+};
+
+const BLOOM_LEVELS = 7;
+// The traced image is upscaled anyway, so the canvas itself need not use every
+// device pixel of a large Retina screen; this halves the fixed post-processing cost.
+const MAX_CANVAS_PX = 2.6e6;
+
+// Low-discrepancy sequence for sub-pixel jitter.
+function halton(i, base) {
+  let f = 1, r = 0;
+  while (i > 0) { f /= base; r += f * (i % base); i = Math.floor(i / base); }
+  return r;
+}
+
+// The field of view applies to the shorter side of the screen, so portrait
+// phones see as much of the scene horizontally as landscape screens do vertically.
+function tanHalfVertical(fov, aspect) {
+  const t = Math.tan((fov * Math.PI) / 360);
+  return aspect < 1 ? t / aspect : t;
+}
+
+class Renderer {
+  constructor(canvas) {
+    this.gpu = new GPU(canvas);
+    const gpu = this.gpu;
+    this.gl = gpu.gl;
+    this.canvas = canvas;
+
+    this.traceProg = gpu.program('trace', TRACE_FS);
+    this.skyProg = gpu.program('sky', SKY_FS);
+    this.downProg = gpu.program('downsample', DOWNSAMPLE_FS);
+    this.upProg = gpu.program('upsample', UPSAMPLE_FS);
+    this.compProg = gpu.program('composite', COMPOSITE_FS);
+    this.lumProg = gpu.program('luminance', LUMINANCE_FS);
+    this.accumProg = gpu.program('accumulate', ACCUMULATE_FS);
+    this.history = [];
+    this.historyValid = false;
+    this.frameIndex = 0;
+    this.lum = [gpu.target(1, 1), gpu.target(1, 1)];
+    this.lumFresh = true;
+    this.autoKey = 0.085;
+    this.autoStrength = 0.6;
+
+    this.bbTex = this.makeBlackbodyTexture();
+    this.skyTex = null;
+    this.target = null;
+    this.bloom = [];
+    this.scale = 0.5;          // share of canvas pixels traced
+    this.quality = 'high';
+    this.auto = true;
+    this.pacer = new FramePacer(this.gl);
+    this.fullRes = false;      // photo mode: use every device pixel
+    this.dpr = 1;
+  }
+
+  makeBlackbodyTexture() {
+    const gl = this.gl;
+    const data = buildBlackbodyTable();
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, BB_SIZE, 1, 0, gl.RGBA, gl.FLOAT, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return tex;
+  }
+
+  // Render the six faces of the backdrop once, then mipmap them.
+  bakeSky(size) {
+    const gl = this.gl;
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, tex);
+    const fmt = this.gpu.hdrFormat;
+    for (let f = 0; f < 6; f++) {
+      gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, fmt.internal, size, size, 0, fmt.format, fmt.type, null);
+    }
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    for (let f = 0; f < 6; f++) {
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + f, tex, 0);
+      gl.viewport(0, 0, size, size);
+      this.skyProg.use({ uFace: f });
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(fb);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, tex);
+    gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+    if (this.skyTex) gl.deleteTexture(this.skyTex);
+    this.skyTex = tex;
+  }
+
+  setQuality(q) {
+    if (q === 'auto') { this.auto = true; this.quality = 'high'; }
+    else { this.auto = false; this.quality = q; this.scale = QUALITY[q].maxScale; }
+  }
+
+  // Size the canvas backing store and the traced target.
+  resize() {
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cssPx = Math.max(1, this.canvas.clientWidth * this.canvas.clientHeight);
+    if (!this.fullRes && cssPx * dpr * dpr > MAX_CANVAS_PX) dpr = Math.max(1, Math.sqrt(MAX_CANVAS_PX / cssPx));
+    this.dpr = dpr;
+    const w = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
+    const h = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+    }
+    const maxScale = this.auto ? 0.9 : QUALITY[this.quality].maxScale;
+    this.scale = Math.min(this.scale, maxScale);
+    const tw = Math.max(64, Math.round(w * this.scale));
+    const th = Math.max(64, Math.round(h * this.scale));
+    if (!this.target || this.target.w !== tw || this.target.h !== th) this.allocate(tw, th);
+  }
+
+  allocate(w, h) {
+    const gpu = this.gpu;
+    gpu.dispose(this.target);
+    this.bloom.forEach((t) => gpu.dispose(t));
+    this.history.forEach((t) => gpu.dispose(t));
+    this.target = gpu.target(w, h);
+    this.history = [gpu.target(w, h), gpu.target(w, h)];
+    this.historyValid = false;
+    this.bloom = [];
+    let bw = w, bh = h;
+    for (let i = 0; i < BLOOM_LEVELS; i++) {
+      bw = Math.max(1, bw >> 1);
+      bh = Math.max(1, bh >> 1);
+      this.bloom.push(gpu.target(bw, bh));
+    }
+  }
+
+  // Adapt the traced pixel share to the GPU's measured cost.
+  adapt(dtMs, now) {
+    const next = this.pacer.next(this.scale, dtMs, now, 0.3, 0.9);
+    if (this.auto) this.scale = next;
+  }
+
+  get gpuMs() { return this.pacer.gpuMs; }
+
+  // historyAlpha: weight of the new frame (1 = no history, small = long accumulation).
+  render(view, post) {
+    const gl = this.gl;
+    const gpu = this.gpu;
+    const q = QUALITY[this.quality];
+    const T = this.target;
+    const alpha = this.historyValid ? Math.min(1, Math.max(0.02, post.historyAlpha ?? 1)) : 1;
+    this.frameIndex = (this.frameIndex + 1) % 64;
+    const jitter = alpha < 1 ? [halton(this.frameIndex + 1, 2) - 0.5, halton(this.frameIndex + 1, 3) - 0.5] : [0, 0];
+    this.pacer.begin();
+
+    gpu.pass(this.traceProg, T, {
+      uRes: [T.w, T.h],
+      uCamPos: view.pos,
+      uCamRight: view.right,
+      uCamUp: view.up,
+      uCamFwd: view.fwd,
+      uTanHalfFov: tanHalfVertical(view.fov, T.w / T.h),
+      uLensShift: [0, view.lensShift || 0],
+      uJitter: jitter,
+      uObsVel: view.obsVel,
+      uTime: view.time,
+      uMaxSteps: q.steps,
+      uStepK: q.stepK,
+      uStepErr: q.stepErr,
+      uCurvature: view.curvature,
+      uDiskOn: view.diskOn,
+      uDiskInner: view.diskInner,
+      uDiskOuter: view.diskOuter,
+      uDiskTemp: view.diskTemp,
+      uDiskDensity: view.diskDensity,
+      uDiskGain: view.diskGain,
+      uCorona: view.corona,
+      uDoppler: view.doppler,
+      uGravShift: view.gravShift,
+      uStarGain: view.starGain,
+      uSkyGain: view.skyGain,
+      uBlackbody: this.bbTex,
+      uSky: this.skyTex,
+    });
+
+    // Temporal accumulation into the history ping-pong.
+    const [histPrev, histNext] = this.history;
+    gpu.pass(this.accumProg, histNext, { uCurrent: T.tex, uHistory: histPrev.tex, uAlpha: alpha });
+    this.history = [histNext, histPrev];
+    this.historyValid = true;
+    const H = histNext;
+
+    // Bloom: downsample chain, then accumulate back up with additive blending.
+    let src = H;
+    this.bloom.forEach((dst, i) => {
+      gpu.pass(this.downProg, dst, { uSrc: src.tex, uTexel: [1 / src.w, 1 / src.h], uKaris: i === 0 ? 1 : 0 });
+      src = dst;
+    });
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    for (let i = this.bloom.length - 1; i > 0; i--) {
+      const lo = this.bloom[i];
+      gpu.pass(this.upProg, this.bloom[i - 1], { uSrc: lo.tex, uTexel: [1 / lo.w, 1 / lo.h], uRadius: 1.0 });
+    }
+    gl.disable(gl.BLEND);
+
+    // Auto-exposure: adapt toward the new average with a ~0.7 s time constant.
+    const [lumPrev, lumNext] = this.lum;
+    gpu.pass(this.lumProg, lumNext, {
+      uSrc: this.bloom[this.bloom.length - 1].tex,
+      uPrev: lumPrev.tex,
+      uBlend: this.lumFresh ? 1 : 1 - Math.exp(-(post.dt ?? 0.016) * 1.4),
+    });
+    this.lum = [lumNext, lumPrev];
+    this.lumFresh = false;
+
+    gpu.pass(this.compProg, null, {
+      uLum: lumNext.tex,
+      uHDR: H.tex,
+      uAutoKey: this.autoKey,
+      uAutoStrength: post.autoStrength ?? this.autoStrength,
+      uBloom: this.bloom[0].tex,
+      uWide: this.bloom[2].tex,
+      uBloomLevels: BLOOM_LEVELS,
+      uBloomStrength: post.bloom,
+      uExposure: post.exposure,
+      uEHT: post.eht,
+      uTime: view.wallTime,
+      uFade: post.fade,
+      uRes: [this.canvas.width, this.canvas.height],
+    });
+    this.pacer.end();
+  }
+}
+
+return { QUALITY, tanHalfVertical, Renderer };
+})();
+
+// ---- js/camera.js
+const __mod_js_camera = (() => {
+
+// Orbit camera in spherical coordinates around the hole, with a free-look
+// offset (yaw/pitch) so the observer can turn away from the black hole.
+
+const TAU = Math.PI * 2;
+const R_MIN = 1.004;
+const R_MAX = 400;
+
+class Camera {
+  constructor() {
+    this.r = 26;
+    this.theta = 1.43;   // polar angle from the disk axis (+y)
+    this.phi = 0.9;
+    this.yaw = 0;
+    this.pitch = 0;
+    this.roll = 0;
+    this.fov = 60;
+    // Inertia for direct manipulation.
+    this.vel = { theta: 0, phi: 0, logR: 0, yaw: 0, pitch: 0 };
+    this.dragging = false;
+  }
+
+  get state() {
+    return { r: this.r, theta: this.theta, phi: this.phi, yaw: this.yaw, pitch: this.pitch, roll: this.roll, fov: this.fov };
+  }
+
+  set(s) {
+    for (const k of ['r', 'theta', 'phi', 'yaw', 'pitch', 'roll', 'fov']) if (s[k] !== undefined) this[k] = s[k];
+    this.clamp();
+  }
+
+  clamp() {
+    this.r = Math.min(R_MAX, Math.max(R_MIN, this.r));
+    this.theta = Math.min(Math.PI - 0.02, Math.max(0.02, this.theta));
+    this.pitch = Math.min(1.5, Math.max(-1.5, this.pitch));
+    this.yaw = ((this.yaw + Math.PI) % TAU + TAU) % TAU - Math.PI;
+  }
+
+  // Add momentum (wheel, keys). Zoom works on log(r − 0.9), which gives fine
+  // control close to the horizon and quick travel far from it.
+  nudge(dTheta, dPhi, dZoom, dYaw = 0, dPitch = 0) {
+    this.vel.theta += dTheta;
+    this.vel.phi += dPhi;
+    this.vel.logR += dZoom;
+    this.vel.yaw += dYaw;
+    this.vel.pitch += dPitch;
+  }
+
+  // Direct manipulation (dragging): move now, and track the pointer's speed
+  // (per 1/60 s) so a flick keeps gliding after release.
+  drag(dTheta, dPhi, dYaw = 0, dPitch = 0) {
+    this.theta += dTheta;
+    this.phi += dPhi;
+    this.yaw += dYaw;
+    this.pitch += dPitch;
+    const now = performance.now();
+    const frames = Math.max((now - (this.lastDrag || now - 16.7)) / 16.7, 1);
+    this.lastDrag = now;
+    const v = this.vel;
+    const lim = 0.05;
+    const blend = (old, d) => Math.max(-lim, Math.min(lim, old * 0.4 + (d / frames) * 0.6));
+    v.theta = blend(v.theta, dTheta);
+    v.phi = blend(v.phi, dPhi);
+    v.yaw = blend(v.yaw, dYaw);
+    v.pitch = blend(v.pitch, dPitch);
+    this.clamp();
+  }
+
+  // Called when the pointer is released; a pause before release cancels the glide.
+  release() {
+    if (performance.now() - (this.lastDrag || 0) > 90) {
+      this.vel.theta = this.vel.phi = this.vel.yaw = this.vel.pitch = 0;
+    }
+    this.dragging = false;
+  }
+
+  zoomBy(dz) {
+    this.r = 0.9 + Math.exp(Math.log(Math.max(this.r - 0.9, 1e-6)) + dz);
+    this.clamp();
+  }
+
+  // Apply and damp inertial motion.
+  update(dt) {
+    const v = this.vel;
+    const f = Math.min(dt * 60, 4); // velocities are per 1/60 s
+    if (!this.dragging) {
+      this.theta += v.theta * f;
+      this.phi += v.phi * f;
+      this.yaw += v.yaw * f;
+      this.pitch += v.pitch * f;
+    }
+    this.zoomBy(v.logR * f);
+    const damp = Math.exp(-dt * 6.5);
+    for (const k in v) v[k] *= damp;
+    this.clamp();
+  }
+
+  stop() { for (const k in this.vel) this.vel[k] = 0; }
+
+  get moving() {
+    const v = this.vel;
+    return Math.abs(v.theta) + Math.abs(v.phi) + Math.abs(v.logR) + Math.abs(v.yaw) + Math.abs(v.pitch) > 1e-4;
+  }
+
+  // Position and orthonormal basis in world space.
+  view() {
+    const st = Math.sin(this.theta), ct = Math.cos(this.theta);
+    const sp = Math.sin(this.phi), cp = Math.cos(this.phi);
+    const er = [st * cp, ct, st * sp];
+    const eth = [ct * cp, -st, ct * sp];
+    const eph = [-sp, 0, cp];
+    const pos = er.map((x) => x * this.r);
+    // Looking at the hole: forward = -e_r, up = -e_θ, right = forward × up = -e_φ
+    // (with +y as the polar axis this embedding is left-handed in r, θ, φ).
+    const f0 = er.map((x) => -x);
+    const u0 = eth.map((x) => -x);
+    const r0 = eph.map((x) => -x);
+    const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
+    const f1 = f0.map((x, i) => cy * x + sy * r0[i]);
+    const right = r0.map((x, i) => cy * x - sy * f0[i]);
+    const cpt = Math.cos(this.pitch), spt = Math.sin(this.pitch);
+    const fwd = f1.map((x, i) => cpt * x + spt * u0[i]);
+    const up1 = u0.map((x, i) => cpt * x - spt * f1[i]);
+    const cr = Math.cos(this.roll), sr = Math.sin(this.roll);
+    const right2 = right.map((x, i) => cr * x + sr * up1[i]);
+    const up = up1.map((x, i) => cr * x - sr * right[i]);
+    return { pos, fwd, right: right2, up, er, eth, eph };
+  }
+}
+
+// Interpolate two camera states. φ and yaw take the short way round; r in log space.
+function lerpCamera(a, b, t) {
+  const ang = (x, y) => {
+    let d = ((y - x + Math.PI) % TAU + TAU) % TAU - Math.PI;
+    return x + d * t;
+  };
+  return {
+    r: Math.exp(Math.log(a.r) + (Math.log(b.r) - Math.log(a.r)) * t),
+    theta: a.theta + (b.theta - a.theta) * t,
+    phi: ang(a.phi, b.phi),
+    yaw: ang(a.yaw, b.yaw),
+    pitch: a.pitch + (b.pitch - a.pitch) * t,
+    roll: ang(a.roll ?? 0, b.roll ?? 0),
+    fov: a.fov + (b.fov - a.fov) * t,
+  };
+}
+
+const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+return { R_MIN, R_MAX, Camera, lerpCamera, easeInOut };
+})();
+
+// ---- js/params.js
+const __mod_js_params = (() => {
+
+// Scene parameters. Numeric values glide toward their targets so that every
+// toggle, preset and tour step becomes a smooth transition instead of a cut.
+
+const DEFAULTS = {
+  curvature: 1,      // 0 = flat spacetime, 1 = Schwarzschild
+  diskOn: 1,
+  diskInner: 3,      // ISCO, in r_s
+  diskOuter: 14,
+  diskTemp: 4300,    // peak temperature, K
+  diskDensity: 1,
+  diskGain: 7,
+  corona: 0.12,
+  doppler: 1,
+  gravShift: 1,
+  starGain: 1,
+  skyGain: 1,
+  bloom: 0.12,
+  exposure: 1,
+  eht: 0,
+  fade: 1,
+  timeSpeed: 1,
+};
+
+// Values that should glide in log space.
+const LOG_KEYS = new Set(['diskTemp', 'diskGain', 'exposure', 'diskDensity']);
+
+class Params {
+  constructor() {
+    this.value = { ...DEFAULTS };
+    this.target = { ...DEFAULTS };
+    this.rate = {};
+    this.listeners = new Set();
+  }
+
+  get(key) { return this.value[key]; }
+
+  // rate: approach speed (1/s); Infinity snaps immediately.
+  set(key, v, rate = 5) {
+    this.target[key] = v;
+    this.rate[key] = rate;
+    if (rate === Infinity) this.value[key] = v;
+    this.listeners.forEach((fn) => fn(key, v));
+  }
+
+  setMany(obj, rate = 5) {
+    for (const k in obj) this.set(k, obj[k], rate);
+  }
+
+  reset(rate = 3) { this.setMany(DEFAULTS, rate); }
+
+  onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
+
+  update(dt) {
+    for (const k in this.target) {
+      const t = this.target[k];
+      const v = this.value[k];
+      if (v === t) continue;
+      const a = 1 - Math.exp(-dt * (this.rate[k] ?? 5));
+      let next;
+      if (LOG_KEYS.has(k) && v > 0 && t > 0) next = Math.exp(Math.log(v) + (Math.log(t) - Math.log(v)) * a);
+      else next = v + (t - v) * a;
+      if (Math.abs(next - t) < Math.abs(t) * 1e-4 + 1e-5) next = t;
+      this.value[k] = next;
+    }
+  }
+}
+
+return { DEFAULTS, Params };
+})();
+
+// ---- js/physics.js
+const __mod_js_physics = (() => {
+
+// Schwarzschild physics for the instruments and the light-path diagram.
+// Distances are in Schwarzschild radii (r_s = 2GM/c²) unless stated otherwise.
+
+const SUN_RS_M = 2953.25;          // Schwarzschild radius of one solar mass, metres
+const C = 299792458;               // m/s
+const G0 = 9.80665;                // standard gravity, m/s²
+const AU_M = 1.495978707e11;
+const B_CRIT = 1.5 * Math.sqrt(3); // critical impact parameter, 3√3/2 r_s
+const PHOTON_SPHERE = 1.5;
+const ISCO = 3;
+
+const BLACK_HOLES = [
+  { id: 'cygx1', name: 'Cygnus X-1', mass: 21.2, note: 'A stellar black hole, 7,200 light-years away' },
+  { id: 'sgra', name: 'Sagittarius A*', mass: 4.3e6, note: 'The black hole at the centre of the Milky Way' },
+  { id: 'm87', name: 'M87*', mass: 6.5e9, note: 'The first black hole ever photographed' },
+  { id: 'ton618', name: 'TON 618', mass: 6.6e10, note: 'One of the most massive black holes known' },
+];
+
+const OBSERVERS = {
+  hover: { label: 'Hovering', blurb: 'Rockets hold you at a fixed distance' },
+  orbit: { label: 'Orbiting', blurb: 'Coasting on a circular orbit' },
+  fall: { label: 'Falling', blurb: 'Dropped from rest far away, falling straight in' },
+};
+
+const rsMetres = (mass) => SUN_RS_M * mass;
+const timeUnitSeconds = (mass) => rsMetres(mass) / C;   // r_s / c
+const lapse = (r) => Math.sqrt(Math.max(1 - 1 / r, 0));
+
+// Local speed of the observer, measured by a static observer at the same place.
+function observerSpeed(r, mode) {
+  if (mode === 'orbit') return r > PHOTON_SPHERE ? Math.sqrt(0.5 / (r - 1)) : 0;
+  if (mode === 'fall') return Math.sqrt(1 / r);
+  return 0;
+}
+
+// dt/dτ: how much far-away time passes per unit of the observer's own time.
+function timeDilation(r, mode) {
+  if (mode === 'orbit' && r > PHOTON_SPHERE) return 1 / Math.sqrt(1 - 1.5 / r);
+  if (mode === 'fall') return 1 / (1 - 1 / r);
+  return 1 / lapse(r);
+}
+
+// Angular radius of the shadow (radians), centred on the direction to the hole.
+function shadowRadius(r, mode) {
+  const x = Math.min(1, (B_CRIT * lapse(r)) / r);
+  let psi = r >= PHOTON_SPHERE ? Math.asin(x) : Math.PI - Math.asin(x);
+  if (mode === 'fall') {
+    // Aberration: the faller moves toward the hole, which shrinks the shadow.
+    const b = observerSpeed(r, mode);
+    const c = Math.cos(psi);
+    psi = Math.acos((c + b) / (1 + b * c));
+  }
+  return psi;
+}
+
+// Proper acceleration needed to hover, in g.
+function hoverThrustG(r, mass) {
+  const gm = (C * C * rsMetres(mass)) / 2;
+  const R = r * rsMetres(mass);
+  return gm / (R * R * lapse(r)) / G0;
+}
+
+// Head-to-toe tidal acceleration on a 2 m body pointing at the hole, in g.
+function tidalG(r, mass, L = 2) {
+  const rs = rsMetres(mass);
+  return (C * C * L) / (Math.pow(r, 3) * rs * rs) / G0;
+}
+
+// Proper time to fall from r0 to r1 (radial, from rest at infinity), units r_s/c.
+const fallTime = (r0, r1) => (2 / 3) * (Math.pow(r0, 1.5) - Math.pow(r1, 1.5));
+// Inverse: radius after falling for τ from r0.
+const fallRadius = (r0, tau) => Math.pow(Math.max(Math.pow(r0, 1.5) - 1.5 * tau, 0), 2 / 3);
+
+// ---------------------------------------------------------------- formatting
+function formatDistance(metres) {
+  const km = metres / 1000;
+  if (metres >= 0.1 * AU_M) return `${fmt(metres / AU_M)} AU`;
+  if (km >= 1e6) return `${fmt(km / 1e6)} million km`;
+  if (km >= 1) return `${fmt(km)} km`;
+  return `${fmt(metres)} m`;
+}
+
+function formatDuration(seconds) {
+  const s = Math.abs(seconds);
+  if (s < 1e-3) return `${fmt(seconds * 1e6)} µs`;
+  if (s < 1) return `${fmt(seconds * 1e3)} ms`;
+  if (s < 60) return `${fmt(seconds)} s`;
+  if (s < 3600) return `${fmt(seconds / 60)} min`;
+  if (s < 86400 * 2) return `${fmt(seconds / 3600)} h`;
+  if (s < 86400 * 365.25 * 2) return `${fmt(seconds / 86400)} days`;
+  return `${fmt(seconds / (86400 * 365.25))} years`;
+}
+
+// A running clock face: mm:ss.cc for short spans, then h:mm:ss, then days.
+function formatClock(seconds) {
+  const s = Math.max(0, seconds);
+  if (s < 1) return `${(s * 1000).toFixed(2)} ms`;
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    const sec = s - m * 60;
+    return `${String(m).padStart(2, '0')}:${sec.toFixed(2).padStart(5, '0')}`;
+  }
+  if (s < 86400 * 3) {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+  return `${(s / 86400).toFixed(2)} days`;
+}
+
+function fmt(v) {
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a >= 1e15 || a < 1e-3) {
+    const e = Math.floor(Math.log10(a));
+    const m = v / Math.pow(10, e);
+    return `${m.toFixed(1)}×10${superscript(e)}`;
+  }
+  if (a >= 1e3) return Math.round(v).toLocaleString('en-US');
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 10) return v.toFixed(1);
+  if (a >= 1) return v.toFixed(2);
+  return v.toPrecision(2);
+}
+
+function superscript(n) {
+  const map = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
+  return String(n).split('').map((ch) => map[ch]).join('');
+}
+
+// ---------------------------------------------------------------- vectors
+const v3 = {
+  add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+  sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  mul: (a, s) => [a[0] * s, a[1] * s, a[2] * s],
+  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  len: (a) => Math.hypot(a[0], a[1], a[2]),
+  norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; },
+};
+
+// Camera ray (observer frame) -> coordinate direction, exactly as in the shader.
+function observerRayToCoordinate(sObs, camPos, obsVel, curvature) {
+  let s = sObs;
+  const beta = v3.len(obsVel);
+  if (beta > 1e-5) {
+    const bh = v3.mul(obsVel, 1 / beta);
+    const c1 = v3.dot(sObs, bh);
+    const c = (c1 - beta) / (1 - beta * c1);
+    const perp = v3.sub(sObs, v3.mul(bh, c1));
+    const pl = v3.len(perp);
+    s = v3.add(v3.mul(bh, c), pl > 1e-9 ? v3.mul(perp, Math.sqrt(Math.max(0, 1 - c * c)) / pl) : [0, 0, 0]);
+  }
+  const r0 = v3.len(camPos);
+  const rhat = v3.mul(camPos, 1 / r0);
+  const l0 = Math.sqrt(Math.max(1 - curvature / r0, 1e-6));
+  const sr = v3.dot(s, rhat);
+  return v3.norm(v3.add(s, v3.mul(rhat, sr * (l0 - 1))));
+}
+
+// Step length, as in the shader: at most a fraction of r (more far out, where
+// space is nearly flat), and short enough that Verlet's local error, which grows
+// with the rate of change of the force (4k/r⁵), stays below stepErr.
+function stepLength(r, k, stepK, stepErr) {
+  const geometric = stepK * r * Math.min(1 + Math.max(r - 8, 0) * 0.06, 2);
+  const errorLimited = Math.cbrt((stepErr * r ** 5) / (4 * Math.max(k, 1e-9)));
+  return Math.min(Math.max(Math.min(geometric, errorLimited), 0.004), 60);
+}
+
+// Integrate one photon path with the shader's integrator. Allocation-free:
+// when `out` is given, the path is appended to it as flat x, y, z triples.
+// Returns the fate ('horizon', 'disk' or 'sky') and the number of steps.
+function tracePath(camPos, dir, { curvature, diskInner, diskOuter, diskOn, stepK = 0.2, stepErr = 2e-3, maxSteps = 900 }, out = null) {
+  let px = camPos[0], py = camPos[1], pz = camPos[2];
+  let vx = dir[0], vy = dir[1], vz = dir[2];
+  const hx = py * vz - pz * vy, hy = pz * vx - px * vz, hz = px * vy - py * vx;
+  const k = 1.5 * (hx * hx + hy * hy + hz * hz) * curvature;
+  let r = Math.sqrt(px * px + py * py + pz * pz);
+  let f = -k / (r * r * r * r * r);
+  let ax = px * f, ay = py * f, az = pz * f;
+  const escapeR = Math.max(r * 1.15, 40);
+  if (out) out.push(px, py, pz);
+  let fate = 'sky';
+  let steps = 0;
+  for (; steps < maxSteps; steps++) {
+    const dl = stepLength(r, k, stepK, stepErr);
+    const h2 = 0.5 * dl * dl;
+    const nx = px + vx * dl + ax * h2, ny = py + vy * dl + ay * h2, nz = pz + vz * dl + az * h2;
+    const nr = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    const nf = -k / (nr * nr * nr * nr * nr);
+    const nax = nx * nf, nay = ny * nf, naz = nz * nf;
+    vx += 0.5 * (ax + nax) * dl; vy += 0.5 * (ay + nay) * dl; vz += 0.5 * (az + naz) * dl;
+    if (diskOn && py * ny < 0) {
+      const t = py / (py - ny);
+      const cx = px + (nx - px) * t, cz = pz + (nz - pz) * t;
+      const hr = Math.sqrt(cx * cx + cz * cz);
+      if (hr > diskInner && hr < diskOuter) {
+        if (out) out.push(cx, 0, cz);
+        fate = 'disk';
+        break;
+      }
+    }
+    px = nx; py = ny; pz = nz; ax = nax; ay = nay; az = naz; r = nr;
+    if (out) out.push(px, py, pz);
+    if (nr < 1) { fate = 'horizon'; break; }
+    if (nr > escapeR && px * vx + py * vy + pz * vz > 0) break;
+  }
+  return { fate, steps };
+}
+
+return { SUN_RS_M, C, G0, AU_M, B_CRIT, PHOTON_SPHERE, ISCO, BLACK_HOLES, OBSERVERS, rsMetres, timeUnitSeconds, lapse, observerSpeed, timeDilation, shadowRadius, hoverThrustG, tidalG, fallTime, fallRadius, formatDistance, formatDuration, formatClock, fmt, v3, observerRayToCoordinate, stepLength, tracePath };
+})();
+
+// ---- js/ui.js
+const __mod_js_ui = (() => {
+const { BLACK_HOLES, OBSERVERS, fmt } = __mod_js_physics;
+const { QUALITY } = __mod_js_renderer;
+const { blackbodyCSS } = __mod_js_blackbody;
+
+const $ = (id) => document.getElementById(id);
+
+const pct = (v) => `${Math.round(v * 100)}%`;
+const times = (v) => `${v.toFixed(2)}×`;
+
+// Control definitions, grouped as they appear in the drawer.
+const CONTROLS = {
+  'group-spacetime': [
+    { key: 'curvature', type: 'range', label: 'Curvature', min: 0, max: 1, step: 0.005,
+      format: (v) => (v >= 0.995 ? 'Schwarzschild' : v <= 0.005 ? 'Flat' : pct(v)) },
+  ],
+  'group-disk': [
+    { key: 'diskOn', type: 'toggle', label: 'Show the disk' },
+    { key: 'diskTemp', type: 'range', label: 'Peak temperature', min: 1800, max: 30000, log: true, temp: true,
+      format: (v) => `${(Math.round(v / 50) * 50).toLocaleString('en-US')} K` },
+    { key: 'diskOuter', type: 'range', label: 'Outer edge', min: 5, max: 30, step: 0.5, format: (v) => `${v.toFixed(1)} rₛ` },
+    { key: 'diskDensity', type: 'range', label: 'Gas density', min: 0.1, max: 5, log: true, format: times },
+    { key: 'corona', type: 'range', label: 'Corona glow', min: 0, max: 0.5, step: 0.01, format: (v) => v.toFixed(2) },
+  ],
+  'group-light': [
+    { key: 'doppler', type: 'toggle', label: 'Doppler shift and beaming' },
+    { key: 'gravShift', type: 'toggle', label: 'Gravitational redshift' },
+    { key: 'eht', type: 'toggle', label: 'Radio telescope view (EHT)' },
+  ],
+  'group-camera': [
+    { key: 'fov', type: 'range', label: 'Field of view', min: 15, max: 120, step: 1, camera: true, format: (v) => `${Math.round(v)}°` },
+    { key: 'exposure', type: 'range', label: 'Exposure', min: 0.2, max: 5, log: true, format: (v) => `${v >= 1 ? '+' : ''}${Math.log2(v).toFixed(1)} EV` },
+    { key: 'bloom', type: 'range', label: 'Glow', min: 0, max: 0.4, step: 0.005, format: (v) => v.toFixed(2) },
+    { key: 'starGain', type: 'range', label: 'Starlight', min: 0, max: 3, step: 0.05, format: times },
+    { key: 'timeSpeed', type: 'range', label: 'Time speed', min: 0, max: 4, step: 0.05, user: true, format: (v) => (v === 0 ? 'Paused' : times(v)) },
+  ],
+};
+
+class UI {
+  constructor(app) {
+    this.app = app;
+    this.inputs = new Map();
+    this.toastTimer = 0;
+    this.buildControls();
+    this.buildSegments();
+    this.bindChrome();
+    app.params.onChange((key, v) => this.sync(key, v));
+  }
+
+  // ---------------------------------------------------------------- controls
+  buildControls() {
+    for (const [groupId, defs] of Object.entries(CONTROLS)) {
+      const group = $(groupId);
+      for (const def of defs) group.appendChild(def.type === 'toggle' ? this.makeToggle(def) : this.makeRange(def));
+    }
+    // Paint the temperature track with real blackbody colours.
+    const stops = [];
+    for (let i = 0; i <= 12; i++) {
+      const T = Math.exp(Math.log(1800) + (Math.log(30000) - Math.log(1800)) * (i / 12));
+      stops.push(`${blackbodyCSS(T)} ${((i / 12) * 100).toFixed(1)}%`);
+    }
+    document.documentElement.style.setProperty('--bb-stops', stops.join(', '));
+  }
+
+  makeRange(def, idPrefix = 'c') {
+    const wrap = document.createElement('label');
+    wrap.className = `slider${def.temp ? ' temp' : ''}`;
+    const id = `${idPrefix}-${def.key}`;
+    wrap.htmlFor = id;
+    const row = document.createElement('span');
+    row.className = 'row';
+    const name = document.createElement('span');
+    name.textContent = def.label;
+    const out = document.createElement('output');
+    row.append(name, out);
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.id = id;
+    input.min = 0;
+    input.max = 1000;
+    input.step = 1;
+    const toSlider = (v) => (def.log
+      ? (Math.log(v) - Math.log(def.min)) / (Math.log(def.max) - Math.log(def.min))
+      : (v - def.min) / (def.max - def.min)) * 1000;
+    const fromSlider = (s) => {
+      const t = s / 1000;
+      let v = def.log ? Math.exp(Math.log(def.min) + (Math.log(def.max) - Math.log(def.min)) * t) : def.min + (def.max - def.min) * t;
+      if (def.step) v = Math.round(v / def.step) * def.step;
+      return v;
+    };
+    const show = (v) => { out.textContent = def.format(v); };
+    input.addEventListener('input', () => {
+      const v = fromSlider(+input.value);
+      show(v);
+      this.app.setParam(def, v);
+      if (idPrefix === 'cap') this.app.tour.touchedControl();
+    });
+    wrap.append(row, input);
+    const entry = { def, input, set: (v) => { input.value = toSlider(v); show(v); } };
+    this.register(def.key, entry);
+    entry.set(def.camera ? this.app.camera[def.key] : def.user ? this.app.userTimeSpeed : this.app.params.target[def.key]);
+    return wrap;
+  }
+
+  makeToggle(def, idPrefix = 'c') {
+    const wrap = document.createElement('label');
+    wrap.className = 'switch';
+    const id = `${idPrefix}-${def.key}`;
+    wrap.htmlFor = id;
+    const name = document.createElement('span');
+    name.textContent = def.label;
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = id;
+    input.setAttribute('role', 'switch');
+    input.addEventListener('change', () => {
+      this.app.setParam(def, input.checked ? 1 : 0);
+      if (idPrefix === 'cap') this.app.tour.touchedControl();
+    });
+    wrap.append(name, input);
+    const entry = { def, input, set: (v) => { input.checked = v > 0.5; } };
+    this.register(def.key, entry);
+    entry.set(this.app.params.target[def.key]);
+    return wrap;
+  }
+
+  register(key, entry) {
+    if (!this.inputs.has(key)) this.inputs.set(key, []);
+    this.inputs.get(key).push(entry);
+  }
+
+  sync(key, v) {
+    for (const entry of this.inputs.get(key) || []) {
+      if (document.activeElement !== entry.input) entry.set(v);
+    }
+  }
+
+  buildSegments() {
+    const app = this.app;
+    this.segment('seg-mass', BLACK_HOLES.map((b) => ({ value: b.id, label: b.name })), app.massId, (v) => app.setMass(v, true));
+    this.segment('seg-observer', Object.entries(OBSERVERS).map(([value, o]) => ({ value, label: o.label })), app.observer, (v) => app.setObserver(v));
+    this.segment('seg-quality', [{ value: 'auto', label: 'Auto' }, ...Object.entries(QUALITY).map(([value, q]) => ({ value, label: q.label }))], 'auto', (v) => app.setQuality(v));
+    this.refreshNotes();
+  }
+
+  segment(id, options, current, onPick) {
+    const el = $(id);
+    el.innerHTML = '';
+    for (const o of options) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('role', 'radio');
+      b.dataset.value = o.value;
+      b.textContent = o.label;
+      b.setAttribute('aria-checked', String(o.value === current));
+      b.addEventListener('click', () => onPick(o.value));
+      el.appendChild(b);
+    }
+  }
+
+  setSegment(id, value) {
+    for (const b of $(id).children) b.setAttribute('aria-checked', String(b.dataset.value === value));
+  }
+
+  refreshNotes() {
+    const bh = BLACK_HOLES.find((b) => b.id === this.app.massId);
+    $('note-mass').textContent = `${bh.note}. ${massText(bh.mass)}.`;
+    $('note-observer').textContent = OBSERVERS[this.app.observer].blurb + '.';
+    $('brand-bh').textContent = bh.name;
+    $('brand-mass').textContent = massText(bh.mass);
+    this.setSegment('seg-mass', this.app.massId);
+    this.setSegment('seg-observer', this.app.observer);
+  }
+
+  // ---------------------------------------------------------------- chrome
+  bindChrome() {
+    const app = this.app;
+    $('btn-tour').addEventListener('click', () => (app.tour.active ? app.tour.stop() : app.startTour()));
+    $('btn-controls').addEventListener('click', () => this.toggleControls());
+    $('controls-close').addEventListener('click', () => this.toggleControls(false));
+    $('btn-about').addEventListener('click', () => this.toggleAbout(true));
+    $('about-close').addEventListener('click', () => this.toggleAbout(false));
+    $('about').addEventListener('click', (e) => { if (e.target.id === 'about') this.toggleAbout(false); });
+    $('btn-sound').addEventListener('click', () => app.toggleSound());
+    $('btn-capture').addEventListener('click', () => app.capture());
+    $('btn-hide').addEventListener('click', () => this.toggleHidden(true));
+    $('btn-full').addEventListener('click', () => app.toggleFullscreen());
+    $('c-reset').addEventListener('click', () => app.resetAll());
+    $('cap-next').addEventListener('click', () => app.tour.next());
+    $('cap-prev').addEventListener('click', () => app.tour.prev());
+    $('cap-exit').addEventListener('click', () => app.tour.stop());
+    if (!document.documentElement.requestFullscreen) $('btn-full').hidden = true;
+    if (window.top !== window.self) $('btn-capture').hidden = true; // downloads are blocked in embeds
+  }
+
+  toggleControls(force) {
+    const el = $('controls');
+    const open = force ?? el.hidden;
+    el.hidden = !open;
+    $('btn-controls').setAttribute('aria-expanded', String(open));
+    document.body.classList.toggle('controls-open', open);
+  }
+
+  toggleAbout(open) {
+    $('about').hidden = !open;
+    if (open) $('about-close').focus();
+  }
+
+  toggleHidden(force) {
+    const ui = $('ui');
+    const hide = force ?? !ui.classList.contains('hidden-ui');
+    ui.classList.toggle('hidden-ui', hide);
+    if (hide) this.toast('Interface hidden. Press H or tap the screen to bring it back.', 2600, true);
+  }
+
+  get uiHidden() { return $('ui').classList.contains('hidden-ui'); }
+
+  toast(msg, ms = 2600, force = false) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    if (force) el.style.opacity = 1;
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => { el.classList.remove('show'); el.style.opacity = ''; }, ms);
+  }
+
+  setSoundPressed(on) { $('btn-sound').setAttribute('aria-pressed', String(on)); }
+
+  // ---------------------------------------------------------------- tour caption
+  showChapter(i, n, ch, body) {
+    document.body.classList.add('touring');
+    $('btn-tour').setAttribute('aria-pressed', 'true');
+    $('btn-tour').title = 'Leave the tour (T)';
+    $('hint').classList.add('gone');
+    const cap = $('caption');
+    cap.hidden = false;
+    $('cap-count').textContent = `${String(i + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}`;
+    $('cap-title').textContent = ch.title;
+    const p = $('cap-body');
+    p.textContent = body;
+    p.classList.remove('swap');
+    void p.offsetWidth;
+    p.classList.add('swap');
+    $('cap-prev').disabled = i === 0;
+    $('cap-next').disabled = i === n - 1;
+    const ctl = $('cap-control');
+    ctl.innerHTML = '';
+    this.inputs.forEach((list, key) => this.inputs.set(key, list.filter((e) => !e.input.id.startsWith('cap-'))));
+    if (ch.control) {
+      const def = Object.values(CONTROLS).flat().find((d) => d.key === ch.control.key);
+      const spec = { ...def, label: ch.control.label };
+      ctl.appendChild(spec.type === 'toggle' ? this.makeToggle(spec, 'cap') : this.makeRange(spec, 'cap'));
+    }
+    $('cap-progress').style.width = '0%';
+  }
+
+  setChapterProgress(p) { $('cap-progress').style.width = `${(p * 100).toFixed(1)}%`; }
+
+  hideCaption() {
+    document.body.classList.remove('touring');
+    $('caption').hidden = true;
+    $('btn-tour').setAttribute('aria-pressed', 'false');
+    $('btn-tour').title = 'Start the tour (T)';
+  }
+
+  showEnding(text) {
+    $('ending-body').textContent = text;
+    const el = $('ending');
+    el.hidden = false;
+    el.classList.remove('leaving');
+    $('caption').hidden = true;
+    document.body.classList.add('ending-open');
+  }
+
+  hideEnding() {
+    const el = $('ending');
+    document.body.classList.remove('ending-open');
+    if (el.hidden) return;
+    el.classList.add('leaving');
+    setTimeout(() => { el.hidden = true; el.classList.remove('leaving'); }, 1100);
+  }
+
+  // ---------------------------------------------------------------- instruments
+  setText(id, text) {
+    const el = $(id);
+    if (el.textContent !== text) el.textContent = text;
+  }
+}
+
+const sig2 = (v) => String(Number(v.toPrecision(2)));
+
+function massText(m) {
+  if (m >= 1e9) return `${sig2(m / 1e9)} billion suns`;
+  if (m >= 1e6) return `${sig2(m / 1e6)} million suns`;
+  return `${sig2(m)} suns`;
+}
+
+return { UI, massText };
+})();
+
+// ---- js/tour.js
+const __mod_js_tour = (() => {
+const { DEFAULTS } = __mod_js_params;
+const { lerpCamera, easeInOut } = __mod_js_camera;
+const { BLACK_HOLES, hoverThrustG, timeDilation, fallTime, timeUnitSeconds, formatDuration, fmt } = __mod_js_physics;
+
+const HOVER_R = 1.06;
+const FALL_FROM = 12;
+
+const massOf = (id) => BLACK_HOLES.find((b) => b.id === id);
+
+const CHAPTERS = [
+  {
+    id: 'shadow',
+    title: 'The shadow',
+    body: () => `The dark disc is the black hole's shadow. Every pixel inside it traces a ray of light that ends at the event horizon. It looks about 2.6 times wider than the horizon itself, because the hole pulls in light from all around it.`,
+    camera: { r: 34, theta: 1.37, phi: 0.75, yaw: 0, pitch: 0, fov: 52 },
+    drift: -0.012,
+    duration: 15,
+  },
+  {
+    id: 'images',
+    title: 'One disk, seen three times',
+    body: () => `The glowing gas is a single flat ring. The arch over the top is the far side of that ring, its light bent up and over the hole on the way to you. The loop beneath the shadow is the far side's underside, bent the other way. A third image, thin as a hair, hugs the shadow's edge.`,
+    camera: { r: 21, theta: 1.535, phi: 1.6, yaw: 0, pitch: 0, fov: 50 },
+    drift: -0.01,
+    duration: 18,
+  },
+  {
+    id: 'doppler',
+    title: 'Doppler beaming',
+    body: () => `Near the inner edge the gas orbits at half the speed of light. On the side turning toward you its light is squeezed to higher frequencies and thrown forward, so it shines brighter and bluer. The receding side dims and reddens. The film Interstellar left this out to keep its black hole symmetric.`,
+    camera: { r: 24, theta: 1.42, phi: 2.4, yaw: 0, pitch: 0, fov: 55 },
+    params: { doppler: 0 },
+    drift: -0.006,
+    duration: 18,
+    control: { key: 'doppler', label: 'Doppler shift', type: 'toggle' },
+    script(t, tour) {
+      if (t > 3 && !this._done && !this._touched) { this._done = true; tour.params.set('doppler', 1, 1.2); }
+    },
+    enter() { this._done = false; },
+  },
+  {
+    id: 'flat',
+    title: 'Switch gravity off',
+    body: () => `This is what is physically there: a black sphere, and a flat ring of gas starting at three times its radius. Everything else in the picture was light bending on its way to you. Drag the slider to curve spacetime back.`,
+    camera: { r: 24, theta: 1.4, phi: 2.9, yaw: 0, pitch: 0, fov: 55 },
+    drift: -0.006,
+    duration: 20,
+    control: { key: 'curvature', label: 'Spacetime curvature', type: 'range' },
+    script(t, tour) {
+      if (this._touched) return;
+      if (t > 2 && this._phase === 0) { this._phase = 1; tour.params.set('curvature', 0, 0.9); }
+      if (t > 10 && this._phase === 1) { this._phase = 2; tour.params.set('curvature', 1, 0.5); }
+    },
+    enter() { this._phase = 0; },
+  },
+  {
+    id: 'lens',
+    title: 'A lens made of spacetime',
+    body: () => `With the gas removed, the hole works as a lens. Stars directly behind it smear into arcs along a bright circle, the Einstein ring. Every star also appears a second time on the opposite side, and again in thinner images crowding the edge of the shadow.`,
+    // Aligned so the galactic centre sits behind the hole midway through the chapter.
+    camera: { r: 15, theta: 1.8, phi: 3.42, yaw: 0, pitch: 0, fov: 62 },
+    params: { diskOn: 0, starGain: 1.25, skyGain: 2.2 },
+    drift: 0.012,
+    duration: 18,
+  },
+  {
+    id: 'eht',
+    title: 'What a radio telescope sees',
+    body: () => `In 2019 the Event Horizon Telescope, a network of radio dishes as wide as Earth, photographed the black hole in the galaxy M87 from close to this angle. At its resolution, all this detail blurs into a lopsided ring of light around a dark centre, brightest where the gas moves toward us.`,
+    mass: 'm87',
+    camera: { r: 90, theta: 0.297, phi: 4.2, yaw: 0, pitch: 0, roll: -1.35, fov: 18 },
+    params: { diskOuter: 6.5, diskTemp: 5200, corona: 0.2, starGain: 0.35 },
+    drift: 0,
+    duration: 18,
+    control: { key: 'eht', label: 'Radio view', type: 'toggle' },
+    script(t, tour) {
+      if (t > 4.5 && !this._done && !this._touched) { this._done = true; tour.params.set('eht', 1, 1.0); }
+    },
+    enter() { this._done = false; },
+  },
+  {
+    id: 'hover',
+    title: 'Hovering at the edge',
+    body: (ctx) => `You are hovering ${Math.round((HOVER_R - 1) * 100)}% of a horizon radius above the horizon of ${ctx.bh.name}, held up by rockets pushing at ${fmt(hoverThrustG(HOVER_R, ctx.bh.mass))} g. Light from the entire universe now reaches you through one bright window, blueshifted, while the black hole fills the rest of the sky. Each hour on your watch is ${fmt(timeDilation(HOVER_R, 'hover'))} hours for everyone far away.`,
+    mass: 'sgra',
+    camera: { r: HOVER_R, theta: 0.55, phi: 4.8, yaw: Math.PI, pitch: 0, fov: 112 },
+    transition: 7,
+    drift: 0.02,
+    duration: 20,
+  },
+  {
+    id: 'fall',
+    title: 'Falling in',
+    body: (ctx) => `Now let go. You are falling freely from ${FALL_FROM} horizon radii. To a falling observer the shadow looks smaller than to one who hovers, and it never closes over the sky. From here your watch will advance ${formatDuration(fallTime(FALL_FROM, 1) * timeUnitSeconds(ctx.bh.mass))} before you cross.`,
+    endBody: (ctx) => `You crossed the event horizon after ${formatDuration(fallTime(FALL_FROM, 1) * timeUnitSeconds(ctx.bh.mass))} on your own watch, and nothing marked the moment. A distant observer never sees you arrive. Your image slows, reddens and fades at the edge of the shadow, forever.`,
+    mass: 'sgra',
+    camera: { r: FALL_FROM, theta: 1.18, phi: 5.4, yaw: 0, pitch: -0.05, fov: 104 },
+    params: { timeSpeed: 0.33 },
+    transition: 5,
+    drift: 0,
+    duration: Infinity,
+    enter() { this._state = 'wait'; },
+    script(t, tour) {
+      if (this._state === 'wait' && t > 1.5) {
+        this._state = 'fall';
+        tour.app.resetClocks();
+        tour.app.setObserver('fall', { fromTour: true });
+      }
+    },
+    // Called by the app when the camera reaches the horizon.
+    crossed(tour) {
+      this._state = 'done';
+      tour.params.set('fade', 0, 3.5);
+      setTimeout(() => { if (tour.ch === this) tour.ui.showEnding(this.endBody(tour.context())); }, 1200);
+    },
+  },
+];
+
+class Tour {
+  constructor(app) {
+    this.app = app;
+    this.params = app.params;
+    this.camera = app.camera;
+    this.ui = app.ui;
+    this.index = -1;
+    this.active = false;
+    this.autoplay = true;
+  }
+
+  context() {
+    return { bh: massOf(this.app.massId) };
+  }
+
+  start(i = 0) {
+    this.active = true;
+    this.go(i);
+  }
+
+  stop() {
+    if (!this.active) return;
+    this.active = false;
+    this.index = -1;
+    this.ch = null;
+    this.ui.hideCaption();
+    this.ui.hideEnding();
+    // Hand the scene back in its default state: level, hovering, out of the throat.
+    const app = this.app;
+    this.params.setMany({ ...DEFAULTS, timeSpeed: app.userTimeSpeed }, 2);
+    if (app.observer !== 'hover') app.setObserver('hover', { fromTour: true });
+    const s = this.camera.state;
+    if (Math.abs(s.roll) > 0.01 || s.r < 1.6 || Math.abs(s.yaw) > 0.3) {
+      app.flyTo({ ...s, roll: 0, yaw: 0, pitch: 0, r: Math.max(s.r, 6), fov: Math.min(Math.max(s.fov, 45), 75) }, 2.2);
+    }
+  }
+
+  next() { if (this.index < CHAPTERS.length - 1) this.go(this.index + 1); }
+  prev() { if (this.index > 0) this.go(this.index - 1); }
+
+  go(i) {
+    const ch = CHAPTERS[i];
+    this.active = true;
+    this.index = i;
+    this.t = 0;
+    this.userControl = false;
+    this.ch = ch;
+    if (ch.mass) this.app.setMass(ch.mass);
+    this.app.resetClocks();
+    this.app.setObserver(ch.observer || 'hover', { fromTour: true });
+    // Each chapter fully defines the scene, so chapters can be visited in any order.
+    this.params.setMany({ ...DEFAULTS, timeSpeed: this.app.userTimeSpeed, ...(ch.params || {}) }, 2.2);
+    this.params.set('fade', 1, 2.5);
+    ch._touched = false;
+    ch.enter?.call(ch);
+    this.from = this.camera.state;
+    this.camera.stop();
+    this.transition = ch.transition ?? 5;
+    this.ui.showChapter(i, CHAPTERS.length, ch, ch.body(this.context()));
+  }
+
+  // The user grabbed the camera: let them look around for the rest of the chapter.
+  interrupt() {
+    if (this.active) this.userControl = true;
+  }
+
+  // The viewer used the chapter's own control: stop scripting that value.
+  touchedControl() { if (this.ch) this.ch._touched = true; }
+
+  // Returns true if the tour handled the horizon crossing.
+  crossed() {
+    if (!this.active || !this.ch?.crossed) return false;
+    this.ch.crossed(this);
+    return true;
+  }
+
+  update(dt) {
+    if (!this.active) return;
+    const ch = this.ch;
+    this.t += dt;
+    if (!this.userControl) {
+      if (this.t < this.transition) {
+        const k = easeInOut(Math.min(1, this.t / this.transition));
+        this.camera.set(lerpCamera(this.from, ch.camera, k));
+      } else if (ch.drift) {
+        this.camera.phi += ch.drift * dt;
+      }
+    }
+    ch.script?.call(ch, this.t - this.transition, this);
+    const progress = Number.isFinite(ch.duration) ? Math.min(1, this.t / (ch.duration + this.transition)) : 0;
+    this.ui.setChapterProgress(progress);
+    if (this.autoplay && Number.isFinite(ch.duration) && this.t > ch.duration + this.transition) this.next();
+  }
+}
+
+return { CHAPTERS, Tour };
+})();
+
+// ---- js/diagram.js
+const __mod_js_diagram = (() => {
+const { tracePath, observerRayToCoordinate, v3, B_CRIT } = __mod_js_physics;
+const { tanHalfVertical } = __mod_js_renderer;
+
+// The light-path diagram: a side view of the slice through the black hole that
+// contains the camera and the screen's vertical. A fan of rays along the
+// screen's vertical centre line is integrated with the same equations as the
+// shader and coloured by where each ray ends up, which shows directly why the
+// far side of the disk appears above and below the hole. Radii are compressed
+// (asinh) so the horizon stays legible from far away.
+
+const COLORS = {
+  horizon: 'rgba(255, 92, 60, 0.75)',
+  disk: 'rgba(255, 190, 110, 0.95)',
+  sky: 'rgba(170, 200, 255, 0.55)',
+};
+
+class Diagram {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.lastKey = '';
+    this.paths = [];
+    this.view = null;
+  }
+
+  resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.round(this.canvas.clientWidth * dpr);
+    const h = Math.round(this.canvas.clientHeight * dpr);
+    if (w && h && (this.canvas.width !== w || this.canvas.height !== h)) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+      this.lastKey = '';
+    }
+  }
+
+  // Recompute rays only when the view changed noticeably.
+  update(cam, p, obsVel, aspect) {
+    if (!this.canvas.offsetParent) return;
+    this.resize();
+    const key = [cam.pos, cam.fwd, obsVel].flat().map((x) => x.toFixed(3)).join(',')
+      + `|${cam.fov.toFixed(1)}|${aspect.toFixed(2)}|${p.curvature.toFixed(3)}|${p.diskOn > 0.5}|${p.diskOuter.toFixed(1)}`;
+    if (key === this.lastKey) return;
+    this.lastKey = key;
+
+    // Diagram plane: spanned by the direction to the camera and the screen's up vector.
+    const e1 = v3.norm(cam.pos);
+    let side = v3.sub(cam.up, v3.mul(e1, v3.dot(cam.up, e1)));
+    if (v3.len(side) < 1e-3) side = v3.sub(cam.right, v3.mul(e1, v3.dot(cam.right, e1)));
+    const e2 = v3.norm(side);
+    const tanV = tanHalfVertical(cam.fov, aspect);
+    const N = 27;
+    const opts = { curvature: p.curvature, diskInner: p.diskInner, diskOuter: p.diskOuter, diskOn: p.diskOn > 0.5, maxSteps: 600 };
+    this.paths = [];
+    for (let i = 0; i < N; i++) {
+      const x = -1 + (2 * i) / (N - 1);
+      const sObs = v3.norm(v3.add(cam.fwd, v3.mul(cam.up, x * tanV)));
+      const dir = observerRayToCoordinate(sObs, cam.pos, obsVel, p.curvature);
+      const flat = [];
+      const { fate } = tracePath(cam.pos, dir, opts, flat);
+      // Project onto the diagram plane: (toward camera, screen-up).
+      const pts = new Float32Array((flat.length / 3) * 2);
+      for (let j = 0, o = 0; j < flat.length; j += 3, o += 2) {
+        pts[o] = flat[j] * e1[0] + flat[j + 1] * e1[1] + flat[j + 2] * e1[2];
+        pts[o + 1] = flat[j] * e2[0] + flat[j + 1] * e2[1] + flat[j + 2] * e2[2];
+      }
+      this.paths.push({ fate, pts });
+    }
+
+    // Where the disk plane cuts the diagram plane.
+    const n = v3.norm(v3.cross(e1, e2));
+    const ny = Math.abs(n[1]);
+    let diskLine = null;
+    if (ny < 0.985) {
+      const l = v3.norm(v3.cross(n, [0, 1, 0]));
+      diskLine = [v3.dot(l, e1), v3.dot(l, e2)];
+    }
+    this.view = { r: v3.len(cam.pos), diskLine, faceOn: ny >= 0.985, p };
+    this.draw();
+  }
+
+  draw() {
+    const { ctx, canvas } = this;
+    const W = canvas.width, H = canvas.height;
+    const dpr = W / (canvas.clientWidth || 1);
+    ctx.clearRect(0, 0, W, H);
+    if (!this.view) return;
+    const { r, diskLine, faceOn, p } = this.view;
+
+    const R = Math.max(r * 1.12, 8);
+    const a = 2.2;
+    const S = (Math.min(W, H) * 0.5 - 6 * dpr) / Math.asinh(R / a);
+    const cx = W * 0.5, cy = H * 0.5;
+    // Side view: the camera sits on the left looking right; screen-up is up.
+    const map = (x, y) => {
+      const rr = Math.hypot(x, y);
+      if (rr < 1e-9) return [cx, cy];
+      const k = (S * Math.asinh(rr / a)) / rr;
+      return [cx - x * k, cy - y * k];
+    };
+    const rad = (rr) => S * Math.asinh(rr / a);
+
+    // Reference circles.
+    ctx.lineWidth = 1 * dpr;
+    ctx.setLineDash([3 * dpr, 4 * dpr]);
+    ctx.strokeStyle = 'rgba(236,230,220,0.22)';
+    ctx.beginPath(); ctx.arc(cx, cy, rad(1.5), 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([1 * dpr, 5 * dpr]);
+    ctx.strokeStyle = 'rgba(236,230,220,0.18)';
+    ctx.beginPath(); ctx.arc(cx, cy, rad(B_CRIT), 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // The disk, as it meets this plane.
+    if (p.diskOn > 0.5) {
+      ctx.strokeStyle = 'rgba(255, 180, 100, 0.55)';
+      ctx.fillStyle = 'rgba(255, 180, 100, 0.10)';
+      if (faceOn) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, rad(p.diskOuter), 0, Math.PI * 2);
+        ctx.arc(cx, cy, rad(p.diskInner), 0, Math.PI * 2, true);
+        ctx.fill();
+      } else if (diskLine) {
+        ctx.lineWidth = 3 * dpr;
+        ctx.lineCap = 'round';
+        for (const s of [1, -1]) {
+          const [x0, y0] = map(diskLine[0] * p.diskInner * s, diskLine[1] * p.diskInner * s);
+          const [x1, y1] = map(diskLine[0] * p.diskOuter * s, diskLine[1] * p.diskOuter * s);
+          ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+        }
+      }
+    }
+
+    // Rays.
+    ctx.lineWidth = 1.1 * dpr;
+    ctx.lineJoin = 'round';
+    for (const path of this.paths) {
+      const pts = path.pts;
+      ctx.strokeStyle = COLORS[path.fate];
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i += 2) {
+        const [px, py] = map(pts[i], pts[i + 1]);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      if (path.fate === 'disk') {
+        const [px, py] = map(pts[pts.length - 2], pts[pts.length - 1]);
+        ctx.fillStyle = COLORS.disk;
+        ctx.beginPath(); ctx.arc(px, py, 1.8 * dpr, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    // Horizon.
+    const g = ctx.createRadialGradient(cx, cy, rad(1) * 0.6, cx, cy, rad(1) * 1.5);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(0.62, 'rgba(0,0,0,1)');
+    g.addColorStop(0.7, 'rgba(255,120,60,0.35)');
+    g.addColorStop(1, 'rgba(255,120,60,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, rad(1) * 1.5, 0, Math.PI * 2); ctx.fill();
+
+    // Camera.
+    const [camX, camY] = map(r, 0);
+    ctx.fillStyle = '#ece6dc';
+    ctx.beginPath(); ctx.arc(camX, camY, 3 * dpr, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(236,230,220,0.5)';
+    ctx.beginPath(); ctx.arc(camX, camY, 6 * dpr, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
+return { Diagram };
+})();
+
+// ---- js/audio.js
+const __mod_js_audio = (() => {
+
+// A generative drone. Its pitch follows the gravitational blueshift at the
+// observer: as you sink toward the horizon, the hum of the outside universe
+// rises with the light. Disk proximity adds a low, filtered roar.
+
+class Drone {
+  constructor() {
+    this.ctx = null;
+    this.enabled = false;
+    this.voices = [];
+  }
+
+  get running() { return !!this.ctx && this.enabled; }
+
+  async start() {
+    if (!this.ctx) this.build();
+    if (this.ctx.state === 'suspended') await this.ctx.resume();
+    this.enabled = true;
+    const t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setTargetAtTime(0.55, t, 1.2);
+  }
+
+  // Silence the context while the page is hidden; pick up again when it returns.
+  async setVisible(visible) {
+    if (!this.ctx) return;
+    if (!visible) await this.ctx.suspend();
+    else if (this.enabled) await this.ctx.resume();
+  }
+
+  stop() {
+    if (!this.ctx) return;
+    this.enabled = false;
+    const t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setTargetAtTime(0, t, 0.4);
+  }
+
+  build() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    this.ctx = ctx;
+
+    this.master = ctx.createGain();
+    this.master.gain.value = 0;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -18;
+    comp.ratio.value = 3;
+    this.master.connect(comp).connect(ctx.destination);
+
+    const reverb = ctx.createConvolver();
+    reverb.buffer = this.impulse(3.5, 2.2);
+    const wet = ctx.createGain();
+    wet.gain.value = 0.75;
+    reverb.connect(wet).connect(this.master);
+
+    this.filter = ctx.createBiquadFilter();
+    this.filter.type = 'lowpass';
+    this.filter.frequency.value = 520;
+    this.filter.Q.value = 0.9;
+    const dry = ctx.createGain();
+    dry.gain.value = 0.5;
+    this.filter.connect(dry).connect(this.master);
+    this.filter.connect(reverb);
+
+    // Drone voices: root, fifth, octave, a soft ninth. Each drifts slowly.
+    const partials = [[1, 0.32, 'sine'], [1.5, 0.16, 'sine'], [2, 0.12, 'triangle'], [2.25, 0.05, 'sine'], [0.5, 0.22, 'sine']];
+    this.base = 55;
+    for (const [ratio, gain, type] of partials) {
+      for (const detune of [-6, 5]) {
+        const osc = ctx.createOscillator();
+        osc.type = type;
+        osc.frequency.value = this.base * ratio;
+        osc.detune.value = detune;
+        const g = ctx.createGain();
+        g.gain.value = gain * 0.5;
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 0.03 + Math.random() * 0.07;
+        const lfoGain = ctx.createGain();
+        lfoGain.gain.value = gain * 0.25;
+        lfo.connect(lfoGain).connect(g.gain);
+        osc.connect(g).connect(this.filter);
+        osc.start();
+        lfo.start();
+        this.voices.push({ osc, ratio });
+      }
+    }
+
+    // Roar: brown noise through a resonant low-pass.
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.brownNoise(4);
+    noise.loop = true;
+    this.roarFilter = ctx.createBiquadFilter();
+    this.roarFilter.type = 'lowpass';
+    this.roarFilter.frequency.value = 140;
+    this.roarFilter.Q.value = 4;
+    this.roarGain = ctx.createGain();
+    this.roarGain.gain.value = 0;
+    noise.connect(this.roarFilter).connect(this.roarGain);
+    this.roarGain.connect(this.master);
+    this.roarGain.connect(reverb);
+    noise.start();
+
+    // Shimmer: high partials that bloom with blueshift.
+    this.shimmer = ctx.createGain();
+    this.shimmer.gain.value = 0;
+    for (const ratio of [8, 12, 16.02]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = this.base * ratio;
+      osc.connect(this.shimmer);
+      osc.start();
+      this.voices.push({ osc, ratio });
+    }
+    this.shimmer.connect(reverb);
+  }
+
+  // shift: frequency factor of light reaching the observer (≥ 1 near the hole);
+  // proximity: 0 far away .. 1 at the disk; brightness: rough scene brightness.
+  update({ shift, proximity }) {
+    if (!this.running) return;
+    const t = this.ctx.currentTime;
+    const s = Math.min(Math.max(shift, 0.4), 6);
+    const f = this.base * Math.pow(s, 0.75);
+    for (const v of this.voices) v.osc.frequency.setTargetAtTime(f * v.ratio, t, 0.6);
+    this.filter.frequency.setTargetAtTime(380 + 900 * proximity + 300 * (s - 1), t, 0.5);
+    this.roarGain.gain.setTargetAtTime(0.05 + 0.5 * proximity * proximity, t, 0.6);
+    this.roarFilter.frequency.setTargetAtTime(90 + 200 * proximity, t, 0.6);
+    this.shimmer.gain.setTargetAtTime(Math.min(0.03, 0.012 * Math.max(0, s - 1.2)), t, 0.8);
+  }
+
+  impulse(seconds, decay) {
+    const ctx = this.ctx;
+    const len = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+    return buf;
+  }
+
+  brownNoise(seconds) {
+    const ctx = this.ctx;
+    const len = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+      d[i] = last * 3.5;
+    }
+    return buf;
+  }
+}
+
+return { Drone };
+})();
+
+// ---- js/main.js
+const __mod_js_main = (() => {
+const { Renderer } = __mod_js_renderer;
+const { Camera } = __mod_js_camera;
+const { Params, DEFAULTS } = __mod_js_params;
+const { UI } = __mod_js_ui;
+const { Tour } = __mod_js_tour;
+const { Diagram } = __mod_js_diagram;
+const { Drone } = __mod_js_audio;
+const { BLACK_HOLES, OBSERVERS, PHOTON_SPHERE, v3, rsMetres, timeUnitSeconds, observerSpeed, timeDilation, shadowRadius, hoverThrustG, tidalG, formatDistance, formatDuration, formatClock, fmt } = __mod_js_physics;
+
+// One second on screen is BASE units of the observer's own time (r_s / c),
+// times the user's time-speed setting.
+const BASE = 6;
+const HORIZON_STOP = 1.004;
+const FREE_VIEW = { r: 26, theta: 1.43, phi: 0.9, yaw: 0, pitch: 0, roll: 0, fov: 60 };
+const INTRO_VIEW = { r: 30, theta: 1.47, phi: 0.2, yaw: 0, pitch: 0, roll: 0, fov: 58 };
+
+const $ = (id) => document.getElementById(id);
+
+class App {
+  constructor() {
+    this.canvas = $('view');
+    this.params = new Params();
+    this.camera = new Camera();
+    this.camera.set(INTRO_VIEW);
+    this.massId = 'sgra';
+    this.observer = 'hover';
+    this.obsVel = [0, 0, 0];
+    this.orbitAxis = null;
+    this.time = 0;
+    this.clockLocal = 0;
+    this.clockFar = 0;
+    this.userTimeSpeed = 1;
+    this.paused = false;
+    this.introOpen = true;
+    this.lastFrame = performance.now();
+    this.lastInstruments = 0;
+    this.lastDiagram = 0;
+    this.fps = 60;
+    this.respawnAt = 0;
+    this.lensShift = 0.3;
+  }
+
+  async init() {
+    document.body.classList.add('intro-open');
+    await paint();
+    try {
+      this.renderer = new Renderer(this.canvas);
+      const small = Math.min(screen.width, screen.height) < 700;
+      this.renderer.bakeSky(small ? 512 : 1024);
+      this.renderer.scale = small ? 0.4 : 0.5;
+    } catch (err) {
+      console.error(err);
+      this.fail(err.message === 'WEBGL2_UNAVAILABLE' ? null : 'The GPU could not compile the ray tracer on this device. Try another browser or computer.');
+      return;
+    }
+    this.canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      this.fail('The graphics driver reset. Reload the page to start again.');
+    });
+
+    this.ui = new UI(this);
+    this.tour = new Tour(this);
+    this.diagram = new Diagram($('diagram-canvas'));
+    this.audio = new Drone();
+    this.bindInput();
+    this.bindIntro();
+    this.detectDownloads();
+    requestAnimationFrame((t) => this.frame(t));
+  }
+
+  // Embedded in the Claude artifact viewer, plain downloads are blocked; the
+  // viewer's downloads capability saves files instead (with the viewer's OK).
+  detectDownloads() {
+    if (!window.claude?.use) return;
+    window.claude.use('downloads').then((d) => {
+      this.downloads = d;
+      if (d) $('btn-capture').hidden = false;
+    }).catch(() => {});
+  }
+
+  fail(message) {
+    if (message) $('fallback-msg').textContent = message;
+    $('fallback').hidden = false;
+    $('intro').hidden = true;
+  }
+
+  // ---------------------------------------------------------------- state changes
+  setParam(def, v) {
+    if (def.camera) { this.camera[def.key] = v; return; }
+    if (def.user) this.userTimeSpeed = v;
+    this.params.set(def.key, v, 8);
+  }
+
+  setMass(id, fromUser = false) {
+    if (id === this.massId) return;
+    this.massId = id;
+    this.ui.refreshNotes();
+    if (fromUser && !this.massHintShown) {
+      this.massHintShown = true;
+      this.ui.toast('The picture is the same for every mass. Only distances and times scale.', 4200);
+    }
+  }
+
+  setObserver(mode, { fromTour = false } = {}) {
+    if (mode === 'orbit' && this.camera.r <= PHOTON_SPHERE + 0.05) {
+      if (!fromTour) this.ui.toast('No circular orbits exist inside the photon sphere, at 1.5 rₛ. Move further out first.', 3800);
+      mode = 'hover';
+    }
+    this.observer = mode;
+    if (mode === 'orbit') this.resetOrbitAxis();
+    this.ui.refreshNotes();
+    if (!fromTour && mode === 'fall') this.ui.toast('Falling. Scroll back out at any time.', 2400);
+  }
+
+  resetOrbitAxis() {
+    const pos = this.camera.view().pos;
+    let vdir = v3.cross([0, 1, 0], pos); // co-rotating with the disk
+    if (v3.len(vdir) < 1e-3 * v3.len(pos)) vdir = this.camera.view().right;
+    this.orbitAxis = v3.norm(v3.cross(pos, vdir));
+  }
+
+  setQuality(q) {
+    this.renderer.setQuality(q);
+    this.ui.setSegment('seg-quality', q);
+  }
+
+  resetClocks() { this.clockLocal = 0; this.clockFar = 0; }
+
+  resetAll() {
+    this.tour.stop();
+    this.userTimeSpeed = 1;
+    this.params.reset(3);
+    this.params.set('fade', 1, 3);
+    this.camera.stop();
+    this.flyTo(FREE_VIEW);
+    this.setObserver('hover');
+    this.setMass('sgra');
+    this.setQuality('auto');
+    this.resetClocks();
+    this.ui.sync('fov', FREE_VIEW.fov);
+  }
+
+  // A short eased camera move outside the tour.
+  flyTo(target, seconds = 2.5) {
+    this.flight = { from: this.camera.state, to: target, t: 0, seconds };
+  }
+
+  startTour() {
+    this.ui.hideEnding();
+    this.ui.toggleControls(false);
+    this.flight = null;
+    this.tour.start(0);
+  }
+
+  // ---------------------------------------------------------------- intro
+  bindIntro() {
+    const ready = () => {
+      $('intro-status').textContent = '';
+      $('intro-tour').disabled = false;
+      $('intro-free').disabled = false;
+    };
+    ready();
+    const leave = (thenTour, withGesture = true) => {
+      if (!this.introOpen) return;
+      this.introOpen = false;
+      const intro = $('intro');
+      intro.classList.add('leaving');
+      document.body.classList.remove('intro-open');
+      setTimeout(() => { intro.hidden = true; }, 1200);
+      if (withGesture && $('intro-sound').checked) this.toggleSound(true);
+      this.resetClocks();
+      if (thenTour) this.startTour();
+      else {
+        this.flyTo(FREE_VIEW, 3);
+        if (getComputedStyle($('hint')).display === 'none') {
+          setTimeout(() => this.ui.toast('Drag to orbit. Scroll or pinch to move closer.', 4200), 1400);
+        }
+        setTimeout(() => $('hint').classList.add('gone'), 9000);
+      }
+    };
+    $('intro-tour').addEventListener('click', () => leave(true));
+    $('intro-free').addEventListener('click', () => leave(false));
+    // Deep links skip the intro: #tour starts the tour, #explore goes straight to free flight.
+    if (location.hash === '#tour') setTimeout(() => leave(true, false), 600);
+    if (location.hash === '#explore') setTimeout(() => leave(false, false), 600);
+    $('ending-free').addEventListener('click', () => {
+      this.ui.hideEnding();
+      this.tour.stop();
+      this.flight = null;
+      this.setObserver('hover');
+      this.camera.set(FREE_VIEW);
+      this.params.setMany({ ...DEFAULTS, timeSpeed: this.userTimeSpeed }, 2);
+      this.params.set('fade', 1, 1.5);
+      this.resetClocks();
+    });
+    $('ending-again').addEventListener('click', () => {
+      this.tour.stop();
+      this.flight = null;
+      this.camera.set(INTRO_VIEW);
+      this.setObserver('hover');
+      this.resetClocks();
+      this.startTour();
+    });
+  }
+
+  // ---------------------------------------------------------------- input
+  bindInput() {
+    const c = this.canvas;
+    const pointers = new Map();
+    let mode = null;
+    let pinch = 0;
+    let downAt = null;
+
+    c.addEventListener('contextmenu', (e) => e.preventDefault());
+    c.addEventListener('pointerdown', (e) => {
+      c.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      downAt = { x: e.clientX, y: e.clientY, t: performance.now() };
+      mode = e.button === 2 || e.shiftKey || e.altKey ? 'look' : 'orbit';
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinch = Math.hypot(a.x - b.x, a.y - b.y);
+        mode = 'pinch';
+      }
+      this.camera.stop();
+      this.camera.dragging = true;
+      this.camera.lastDrag = performance.now();
+      c.classList.add('dragging');
+    });
+    c.addEventListener('pointermove', (e) => {
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y;
+      p.x = e.clientX; p.y = e.clientY;
+      if (mode === 'pinch' && pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch > 0) this.camera.zoomBy(-Math.log(d / pinch) * 1.6);
+        pinch = d;
+        this.userMoved();
+        return;
+      }
+      const k = (0.0042 * this.camera.fov) / 60;
+      if (mode === 'look') this.camera.drag(0, 0, dx * k, -dy * k);
+      else this.camera.drag(-dy * k, dx * k);
+      if (Math.abs(dx) + Math.abs(dy) > 0) this.userMoved();
+    });
+    const end = (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size === 0) {
+        this.camera.release();
+        c.classList.remove('dragging');
+        // A tap brings a hidden interface back.
+        if (downAt && this.ui.uiHidden && performance.now() - downAt.t < 300
+          && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 6) this.ui.toggleHidden(false);
+        mode = null;
+      } else if (pointers.size === 1) {
+        mode = 'orbit';
+      }
+    };
+    c.addEventListener('pointerup', end);
+    c.addEventListener('pointercancel', end);
+
+    c.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const scale = e.deltaMode === 1 ? 16 : 1;
+      this.camera.nudge(0, 0, Math.max(-0.05, Math.min(0.05, e.deltaY * scale * 0.00011)));
+      this.userMoved();
+    }, { passive: false });
+
+    window.addEventListener('keydown', (e) => this.onKey(e));
+    // Rendering stops in a background tab; the sound should too.
+    document.addEventListener('visibilitychange', () => {
+      this.audio.setVisible(document.visibilityState === 'visible').catch(() => {});
+    });
+    window.addEventListener('pagehide', () => this.audio.setVisible(false).catch(() => {}));
+  }
+
+  userMoved() {
+    if (this.tour.active) this.tour.interrupt();
+    this.flight = null;
+    if (this.observer === 'orbit') this.orbitDirty = true;
+    $('hint').classList.add('gone');
+  }
+
+  onKey(e) {
+    if (e.target.closest && e.target.closest('input, textarea, select')) return;
+    if (e.metaKey || e.ctrlKey) return;
+    const k = e.key.toLowerCase();
+    const cam = this.camera;
+    const touring = this.tour.active;
+    if (this.introOpen && k !== 'escape') return;
+    const step = 0.02;
+    switch (k) {
+      case 'arrowleft': if (touring) this.tour.prev(); else { cam.nudge(0, -step, 0); this.userMoved(); } break;
+      case 'arrowright': if (touring) this.tour.next(); else { cam.nudge(0, step, 0); this.userMoved(); } break;
+      case 'arrowup': case 'w': cam.nudge(0, 0, -0.012); this.userMoved(); break;
+      case 'arrowdown': case 's': cam.nudge(0, 0, 0.012); this.userMoved(); break;
+      case 'a': cam.nudge(0, -step, 0); this.userMoved(); break;
+      case 'd': cam.nudge(0, step, 0); this.userMoved(); break;
+      case 'q': cam.nudge(-step * 0.6, 0, 0); this.userMoved(); break;
+      case 'e': cam.nudge(step * 0.6, 0, 0); this.userMoved(); break;
+      case ' ':
+        this.paused = !this.paused;
+        this.ui.toast(this.paused ? 'Time paused' : 'Time running');
+        break;
+      case 't': touring ? this.tour.stop() : this.startTour(); break;
+      case 'c': this.ui.toggleControls(); break;
+      case 'h': this.ui.toggleHidden(); break;
+      case 'p': this.capture(); break;
+      case 'f': this.toggleFullscreen(); break;
+      case 'm': this.toggleSound(); break;
+      case 'escape':
+        if (!$('about').hidden) this.ui.toggleAbout(false);
+        else if (!$('controls').hidden) this.ui.toggleControls(false);
+        else if (this.ui.uiHidden) this.ui.toggleHidden(false);
+        else if (touring) this.tour.stop();
+        break;
+      default: return;
+    }
+    e.preventDefault();
+  }
+
+  async toggleSound(force) {
+    const on = force ?? !this.audio.running;
+    try {
+      if (on) await this.audio.start();
+      else this.audio.stop();
+      this.ui.setSoundPressed(on);
+    } catch {
+      this.ui.toast('Sound is not available in this browser.');
+    }
+  }
+
+  toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else document.documentElement.requestFullscreen?.().catch(() => {});
+  }
+
+  capture() {
+    if (this.capturing) return;
+    this.capturing = true;
+    this.ui.toast('Developing a full-resolution still…', 1800);
+    setTimeout(() => this.renderStill(), 80);
+  }
+
+  // A still photograph: trace at full resolution with the Ultra preset and
+  // average 12 jittered frames of the frozen scene, then save the canvas.
+  renderStill() {
+    const R = this.renderer;
+    const prev = { quality: R.quality, auto: R.auto, scale: R.scale };
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const px = this.canvas.clientWidth * this.canvas.clientHeight * dpr * dpr;
+    R.fullRes = true;
+    R.quality = 'ultra';
+    R.auto = false;
+    R.scale = Math.min(1, Math.sqrt(6e6 / px));
+    R.resize();
+    const p = this.params.value;
+    const view = {
+      ...this.camera.view(), ...p, fov: this.camera.fov, obsVel: this.obsVel, time: this.time,
+      wallTime: performance.now() / 1000, lensShift: this.lensShift,
+    };
+    for (let k = 0; k < 12; k++) {
+      R.render(view, { bloom: p.bloom, exposure: p.exposure, eht: p.eht, fade: p.fade, dt: 0, historyAlpha: 1 / (k + 1) });
+    }
+    this.canvas.toBlob((blob) => {
+      this.capturing = false;
+      if (!blob) { this.ui.toast('The image could not be saved.'); return; }
+      const bh = BLACK_HOLES.find((b) => b.id === this.massId).name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+      const filename = `event-horizon-${bh}-${this.camera.r.toFixed(2)}rs.png`;
+      if (this.downloads) {
+        this.downloads.save({ filename, data: blob })
+          .then(() => this.ui.toast('Image saved'))
+          .catch((err) => {
+            if (err?.code === 'declined') return;
+            if (err?.code === 'rate_limited') { this.ui.toast('A save is already waiting for your answer.'); return; }
+            this.ui.toast('Saving images is not available here.');
+            $('btn-capture').hidden = true;
+          });
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      this.ui.toast('Image saved');
+    }, 'image/png');
+    Object.assign(R, prev, { fullRes: false });
+  }
+
+  // ---------------------------------------------------------------- simulation
+  observerVelocity(view) {
+    const r = this.camera.r;
+    if (this.observer === 'fall') return v3.mul(view.er, -observerSpeed(r, 'fall'));
+    if (this.observer === 'orbit' && r > PHOTON_SPHERE && this.orbitAxis) {
+      return v3.mul(v3.norm(v3.cross(this.orbitAxis, view.er)), observerSpeed(r, 'orbit'));
+    }
+    return [0, 0, 0];
+  }
+
+  step(dt) {
+    const cam = this.camera;
+    const p = this.params.value;
+    const speed = this.paused ? 0 : p.timeSpeed;
+    const dTau = dt * BASE * speed;              // observer's proper time, r_s / c
+    const mode = this.observer === 'orbit' && cam.r <= PHOTON_SPHERE ? 'hover' : this.observer;
+    const dil = timeDilation(cam.r, mode);
+    this.time += dTau * Math.min(dil, 30);       // far-away (coordinate) time drives the disk
+    const unit = timeUnitSeconds(BLACK_HOLES.find((b) => b.id === this.massId).mass);
+    this.clockLocal += dTau * unit;
+    this.clockFar += dTau * Math.min(dil, 1e5) * unit;
+
+    // Observers that move on their own.
+    if (this.observer === 'fall' && cam.r > HORIZON_STOP && !cam.dragging) {
+      const r15 = Math.pow(cam.r, 1.5) - 1.5 * dTau;
+      cam.r = Math.max(HORIZON_STOP, Math.pow(Math.max(r15, 0), 2 / 3));
+      if (cam.r <= HORIZON_STOP) this.crossHorizon();
+    } else if (this.observer === 'orbit' && cam.r > PHOTON_SPHERE) {
+      if (this.orbitDirty && !cam.dragging) { this.resetOrbitAxis(); this.orbitDirty = false; }
+      if (!cam.dragging) this.advanceOrbit(Math.sqrt(0.5 / Math.pow(cam.r, 3)) * dTau * Math.min(dil, 30));
+    }
+  }
+
+  // Rotate the camera along its orbit plane by angle a.
+  advanceOrbit(a) {
+    const cam = this.camera;
+    const n = this.orbitAxis;
+    const pos = cam.view().pos;
+    const c = Math.cos(a), s = Math.sin(a);
+    const cr = v3.cross(n, pos);
+    const np = v3.add(v3.add(v3.mul(pos, c), v3.mul(cr, s)), v3.mul(n, v3.dot(n, pos) * (1 - c)));
+    const r = v3.len(np);
+    cam.theta = Math.acos(Math.max(-1, Math.min(1, np[1] / r)));
+    cam.phi = Math.atan2(np[2], np[0]);
+  }
+
+  crossHorizon() {
+    if (this.tour.crossed()) return;
+    this.params.set('fade', 0, 4);
+    this.ui.toast('You crossed the event horizon. Nothing marked the moment.', 3600);
+    this.respawnAt = performance.now() + 2600;
+  }
+
+  // ---------------------------------------------------------------- frame
+  frame(now) {
+    this.tick(now);
+    requestAnimationFrame((t) => this.frame(t));
+  }
+
+  tick(now) {
+    const dt = Math.min(0.1, Math.max(0, (now - this.lastFrame) / 1000));
+    this.lastFrame = now;
+    this.fps += (1 / Math.max(dt, 1e-3) - this.fps) * 0.05;
+
+    if (this.respawnAt && now > this.respawnAt) {
+      this.respawnAt = 0;
+      this.setObserver('hover');
+      this.camera.set(FREE_VIEW);
+      this.camera.stop();
+      this.params.set('fade', 1, 1.2);
+    }
+
+    if (this.introOpen) this.camera.phi -= dt * 0.03;
+    if (this.flight) {
+      const f = this.flight;
+      f.t += dt / f.seconds;
+      const k = f.t >= 1 ? 1 : f.t < 0.5 ? 4 * f.t ** 3 : 1 - Math.pow(-2 * f.t + 2, 3) / 2;
+      const a = f.from, b = f.to;
+      this.camera.set({
+        r: Math.exp(Math.log(a.r) + (Math.log(b.r) - Math.log(a.r)) * k),
+        theta: a.theta + (b.theta - a.theta) * k,
+        phi: a.phi + (((b.phi - a.phi + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * k,
+        yaw: a.yaw + (b.yaw - a.yaw) * k,
+        pitch: a.pitch + (b.pitch - a.pitch) * k,
+        roll: (a.roll ?? 0) + ((b.roll ?? 0) - (a.roll ?? 0)) * k,
+        fov: a.fov + (b.fov - a.fov) * k,
+      });
+      if (f.t >= 1) this.flight = null;
+    }
+
+    this.tour.update(dt);
+    this.params.update(dt);
+    this.camera.update(dt);
+    this.step(dt);
+
+    // Lift the subject above the caption (intro, tour) with an off-centre projection.
+    const portrait = this.canvas.clientHeight > this.canvas.clientWidth * 1.15;
+    const shiftTarget = this.introOpen ? (portrait ? 0.34 : 0.3)
+      : this.tour.active && !$('caption').hidden ? (portrait ? 0.42 : 0.14) : 0;
+    this.lensShift += (shiftTarget - this.lensShift) * (1 - Math.exp(-dt * 2.5));
+
+    const view = this.camera.view();
+    const target = this.observerVelocity(view);
+    const a = 1 - Math.exp(-dt * 5);
+    this.obsVel = this.obsVel.map((v, i) => v + (target[i] - v) * a);
+    const speed = v3.len(this.obsVel);
+    if (speed > 0.995) this.obsVel = v3.mul(this.obsVel, 0.995 / speed);
+
+    const p = this.params.value;
+    this.renderer.resize();
+    this.renderer.adapt(dt * 1000, now);
+    this.renderer.render(
+      { ...view, ...p, fov: this.camera.fov, obsVel: this.obsVel, time: this.time, wallTime: now / 1000, lensShift: this.lensShift },
+      { bloom: p.bloom, exposure: p.exposure, eht: p.eht, fade: p.fade, dt, historyAlpha: this.historyAlpha(view) },
+    );
+
+    if (now - this.lastInstruments > 100) {
+      this.lastInstruments = now;
+      this.updateInstruments();
+    }
+    if (now - this.lastDiagram > 120 && !this.ui.uiHidden) {
+      this.lastDiagram = now;
+      this.diagram.update({ ...view, fov: this.camera.fov }, p, this.obsVel, this.canvas.width / this.canvas.height);
+    }
+    if (this.audio.running) {
+      const r = this.camera.r;
+      const mode = this.observer;
+      const shift = mode === 'fall' ? Math.sqrt(timeDilation(r, mode)) : timeDilation(r, mode);
+      this.audio.update({ shift, proximity: Math.max(0, Math.min(1, 1 - (r - 2.5) / 30)) * (0.3 + 0.7 * p.diskOn) });
+    }
+  }
+
+  // Temporal anti-aliasing: how much of the new frame to blend in, from how far
+  // the view moved since the last frame, measured in traced pixels.
+  historyAlpha(view) {
+    const last = this.lastView;
+    this.lastView = { pos: view.pos, fwd: view.fwd, up: view.up, fov: this.camera.fov, shift: this.lensShift, vel: this.obsVel };
+    if (!last) return 1;
+    const T = this.renderer.target;
+    const pixel = (2 * Math.tan((this.camera.fov * Math.PI) / 360)) / Math.min(T.w, T.h);
+    const ang = (a, b) => Math.acos(Math.min(1, Math.max(-1, v3.dot(a, b))));
+    const motion = ang(view.fwd, last.fwd) + ang(view.up, last.up)
+      + v3.len(v3.sub(view.pos, last.pos)) / Math.max(this.camera.r, 1)
+      + Math.abs(this.camera.fov - last.fov) / this.camera.fov
+      + Math.abs(this.lensShift - last.shift) * 0.5
+      + v3.len(v3.sub(this.obsVel, last.vel));
+    const px = motion / pixel;
+    if (px < 0.15) return 0.1;
+    if (px < 0.6) return 0.3;
+    if (px < 1.5) return 0.6;
+    return 1;
+  }
+
+  updateInstruments() {
+    const ui = this.ui;
+    const r = this.camera.r;
+    const bh = BLACK_HOLES.find((b) => b.id === this.massId);
+    let mode = this.observer;
+    const noOrbit = mode === 'orbit' && r <= PHOTON_SPHERE;
+    if (noOrbit) mode = 'hover';
+
+    ui.setText('ins-observer', OBSERVERS[this.observer].label + (noOrbit ? ' (no orbit here)' : ''));
+    ui.setText('ins-r', r < 2 ? r.toFixed(3) : r < 10 ? r.toFixed(2) : r.toFixed(1));
+    ui.setText('ins-r-phys', formatDistance(r * rsMetres(bh.mass)) + ' from the centre');
+    const dil = timeDilation(r, mode);
+    ui.setText('ins-dilation', dil < 1.0005 ? 'Same as far away' : `1 h = ${fmt(dil)} h far away`);
+    const psi = shadowRadius(r, mode === 'orbit' ? 'hover' : mode);
+    const across = (2 * psi * 180) / Math.PI;
+    const sky = ((1 - Math.cos(psi)) / 2) * 100;
+    ui.setText('ins-shadow', `${mode === 'orbit' ? '≈ ' : ''}${fmt(across)}° · ${sky < 1 ? sky.toFixed(2) : sky.toFixed(0)}% of sky`);
+    const v = observerSpeed(r, mode);
+    ui.setText('ins-speed', mode === 'hover' ? 'Held still by rockets' : `${v.toFixed(3)} c`);
+    $('row-thrust').hidden = mode !== 'hover';
+    if (mode === 'hover') ui.setText('ins-thrust', `${fmt(hoverThrustG(r, bh.mass))} g`);
+    ui.setText('ins-tidal', `${fmt(tidalG(r, bh.mass))} g`);
+    ui.setText('clock-local', formatClock(this.clockLocal));
+    ui.setText('clock-far', formatClock(this.clockFar));
+    const p = this.params.value;
+    const rate = this.paused ? 0 : BASE * p.timeSpeed * timeUnitSeconds(bh.mass);
+    ui.setText('ins-playback', rate === 0 ? 'Time paused' : `1 s on screen = ${formatDuration(rate)} on your watch`);
+    ui.sync('fov', this.camera.fov);
+    const T = this.renderer.target;
+    const gpu = this.renderer.gpuMs ? ` · GPU ${this.renderer.gpuMs.toFixed(1)} ms` : '';
+    ui.setText('perf', `${Math.round(this.fps)} fps${gpu} · ${(T.w * T.h / 1e6).toFixed(2)} million rays per frame`);
+  }
+}
+
+// Let the intro paint before shader compilation blocks the main thread.
+function paint() { return new Promise((r) => setTimeout(r, 40)); }
+
+const app = new App();
+window.eventHorizon = app;
+app.init();
+
+
+})();
+</script>
+</body>
+</html>
